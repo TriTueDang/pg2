@@ -1,0 +1,10 @@
+{
+  "name": "pg2",
+  "dependencies": [
+    "fmt",
+    "glew",
+    "glfw3",
+    "glm",
+    "nlohmann-json"
+  ]
+}
