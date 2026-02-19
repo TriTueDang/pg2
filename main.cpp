@@ -4,13 +4,14 @@
 // #include <iostream>
 
 // #include "app.hpp"
+
 #include <iostream>
 #include <chrono>
 #include <stack>
 #include <random>
-#include "app.hpp"
+
 // OpenCV (does not depend on GL)
-#include <opencv2\opencv.hpp>
+#include <opencv2/opencv.hpp>
 
 // OpenGL Extension Wrangler: allow all multiplatform GL functions
 #include <GL/glew.h>
@@ -25,7 +26,7 @@
 // OpenGL math (and other additional GL libraries, at the end)
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
-
+#include "app.hpp"
 // define our application
 App app;
 

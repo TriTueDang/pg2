@@ -6,26 +6,38 @@
 
 // #include "app.hpp"
 #include <iostream>
+#include <opencv4/opencv2/opencv.hpp>
+
+#include "app.hpp"
 #include <chrono>
 #include <stack>
-#include <random>
+ #include <random>
+ #include "app.hpp"
 
-// OpenCV (does not depend on GL)
-#include <opencv2/opencv.hpp>
+// // OpenGL Extension Wrangler: allow all multiplatform GL functions
+// #include <GL/glew.h>
+//WGLEW = Windows GL Extension Wrangler (change for different platform)
+// // platform specific functions (in this case Windows)
+ // #include <GL/wglew.h>
 
-// OpenGL Extension Wrangler: allow all multiplatform GL functions
-#include <GL/glew.h>
-// WGLEW = Windows GL Extension Wrangler (change for different platform)
-// platform specific functions (in this case Windows)
-#include <GL/wglew.h>
+// // GLFW toolkit
+// // Uses GL calls to open GL context, i.e. GLEW __MUST__ be first.
+// #include <GLFW/glfw3.h>
 
-// GLFW toolkit
-// Uses GL calls to open GL context, i.e. GLEW __MUST__ be first.
-#include <GLFW/glfw3.h>
+// // OpenGL debug callback (Task 1)
+static void GLAPIENTRY gl_debug_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
+    if (type == GL_DEBUG_TYPE_ERROR)
+        std::cerr << "GL ERROR: " << message << std::endl;
+}
+
+// // GLFW error callback (Task 2)
+static void glfw_error_callback(int error, const char* description) {
+    std::cerr << "GLFW Error " << error << ": " << description << std::endl;
+}
 
 // OpenGL math (and other additional GL libraries, at the end)
-#include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
+// #include <glm/glm.hpp>
+// #include <glm/gtc/type_ptr.hpp>
 
 #include "assets.hpp"
 #include "app.hpp"
@@ -36,49 +48,33 @@ App::App()
     std::cout << "Constructed...\n";
 }
 
-// bool App::init()
-// {
-//     try {
-//         // initialization code
-//         //...
+bool App::init()
+{
+    try {
+        // initialization code
+        //...
 
-//         // some init
-//         // if (not_success)
-//         //  throw std::runtime_error("something went bad");
-//     }
-//     catch (std::exception const& e) {
-//         std::cerr << "Init failed : " << e.what() << std::endl;
-//         throw;
-//     }
-//     std::cout << "Initialized...\n";
-//     return true;
-// }
-bool App::init() {
+        // Task 2: GLFW error callback
+        glfwSetErrorCallback(glfw_error_callback);
 
-    // GL init
-    {
-    	// init glfw
-    	// https://www.glfw.org/documentation.html
-        // TODO: add error checking!
-    	glfwInit();
+        // Task 1: OpenGL debug output
+        if (GLEW_ARB_debug_output) {
+            glEnable(GL_DEBUG_OUTPUT);
+            glDebugMessageCallback(gl_debug_callback, nullptr);
+        }
 
-    	// open window (GL canvas) with no special properties
-        // https://www.glfw.org/docs/latest/quick.html#quick_create_window
-        // TODO: add error checking!
-    	window = glfwCreateWindow(800, 600, "OpenGL context", NULL, NULL);
-        glfwMakeContextCurrent(window);
+        // Register GLFW callbacks (minimal, empty)
+        if (window) {
+            glfwSetKeyCallback(window, [](GLFWwindow*, int, int, int, int){});
+            glfwSetFramebufferSizeCallback(window, [](GLFWwindow*, int, int){});
+            glfwSetMouseButtonCallback(window, [](GLFWwindow*, int, int, int){});
+            glfwSetCursorPosCallback(window, [](GLFWwindow*, double, double){});
+            glfwSetScrollCallback(window, [](GLFWwindow*, double, double){});
+        }
 
-       	// init glew
-    	// http://glew.sourceforge.net/basic.html
-        // TODO: add error checking!
-    	glewInit();
-    	wglewInit();
-
-        if (!GLEW_ARB_direct_state_access)
-            throw std::runtime_error("No DSA :-(");
-
-
-        //TODO: get info about your GL context
+        // some init
+        // if (not_success)
+        //  throw std::runtime_error("something went bad");
     }
 
     init_assets();
@@ -149,18 +145,25 @@ vertex v;
 
 int App::run(void)
 {
-
-    GLfloat r,g,b,a;
-    r=g=b=a=1.0f; //white color
-
-    // Activate shader program. There is only one program, so activation can be out of the loop.
-    // In more realistic scenarios, you will activate different shaders for different 3D objects.
-    glUseProgram(shader_prog_ID);
-
-    // Get uniform location in GPU program. This will not change, so it can be moved out of the game loop.
-    GLint uniform_color_location = glGetUniformLocation(shader_prog_ID, "uniform_Color");
-    if (uniform_color_location == -1) {
-        std::cerr << "Uniform location is not found in active shader program. Did you forget to activate it?\n";
+    try {
+        double lastTime = glfwGetTime();
+        int nbFrames = 0;
+        while (!glfwWindowShouldClose(window)) {
+            double currentTime = glfwGetTime();
+            nbFrames++;
+            if (currentTime - lastTime >= 1.0) {
+                double fps = double(nbFrames) / (currentTime - lastTime);
+                std::string title = "App - FPS: " + std::to_string(int(fps));
+                glfwSetWindowTitle(window, title.c_str());
+                nbFrames = 0;
+                lastTime = currentTime;
+            }
+            glfwPollEvents();
+        }
+    }
+    catch (std::exception const& e) {
+        std::cerr << "App failed : " << e.what() << std::endl;
+        return EXIT_FAILURE;
     }
 
     while (!glfwWindowShouldClose(window)) {

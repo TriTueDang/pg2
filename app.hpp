@@ -4,8 +4,9 @@
 
 #pragma once
 
-#include "assets.hpp"
+#include <vector>
 #include "GLFW/glfw3.h"
+#include "assets.hpp"
 
 class App {
 private:
@@ -27,6 +28,7 @@ public:
     App();
 
     bool init(void);
+    void init_assets(void);
     int run(void);
 
     ~App();
