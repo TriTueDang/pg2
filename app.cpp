@@ -1,10 +1,33 @@
-// icp.cpp 
+// icp.cpp
 // author: JJ
 
 #include <iostream>
 #include <opencv2/opencv.hpp>
 
 #include "app.hpp"
+// #include <iostream>
+// #include <chrono>
+// #include <stack>
+// #include <random>
+// #include "app.hpp"
+// // OpenCV (does not depend on GL)
+// #include <opencv2\opencv.hpp>
+
+// // OpenGL Extension Wrangler: allow all multiplatform GL functions
+// #include <GL/glew.h>
+// // WGLEW = Windows GL Extension Wrangler (change for different platform)
+// // platform specific functions (in this case Windows)
+// #include <GL/wglew.h>
+
+// // GLFW toolkit
+// // Uses GL calls to open GL context, i.e. GLEW __MUST__ be first.
+// #include <GLFW/glfw3.h>
+
+// // OpenGL math (and other additional GL libraries, at the end)
+// #include <glm/glm.hpp>
+// #include <glm/gtc/type_ptr.hpp>
+
+#include "assets.hpp"
 
 App::App()
 {
@@ -41,7 +64,7 @@ int App::run(void)
         std::cerr << "App failed : " << e.what() << std::endl;
         return EXIT_FAILURE;
     }
-    
+
     std::cout << "Finished OK...\n";
     return EXIT_SUCCESS;
 }

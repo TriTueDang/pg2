@@ -21,8 +21,10 @@ endif()
 set(PROJECT_SOURCES
     # helloworld.cpp
     main.cpp
+    assets.hpp
     app.cpp
     app.hpp
+
 )
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
