@@ -29,13 +29,37 @@ App app;
 
 int main()
 {
+    using clock = std::chrono::steady_clock;
+    using seconds = std::chrono::duration<double>;
+
+    auto start_time = clock::now();
+
     try {
-        if (app.init())
-            return app.run();
+        if (app.init()) {
+            int result = app.run();
+
+            auto end_time = clock::now();
+            seconds elapsed = end_time - start_time;
+
+            std::cout << "Application runtime: "
+                      << elapsed.count()
+                      << " seconds" << std::endl;
+
+            return result;
+        }
     }
     catch (std::exception const& e) {
         std::cerr << "App failed : " << e.what() << std::endl;
         exit(EXIT_FAILURE);
     }
+
+    auto end_time = clock::now();
+    seconds elapsed = end_time - start_time;
+
+    std::cout << "Application runtime: "
+              << elapsed.count()
+              << " seconds" << std::endl;
+
     return EXIT_SUCCESS;
 }
+

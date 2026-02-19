@@ -45,7 +45,6 @@ App::App()
     std::cout << "Constructed...\n";
 }
 
-
 bool App::init() {
 
     try {
@@ -118,7 +117,6 @@ bool App::init() {
         return false;
     }
 }
-
 
 void App::init_assets(void) {
     //
