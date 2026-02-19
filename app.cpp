@@ -14,7 +14,7 @@
 // #include <GL/glew.h>
 //WGLEW = Windows GL Extension Wrangler (change for different platform)
 // // platform specific functions (in this case Windows)
- #include <GL/wglew.h>
+ // #include <GL/wglew.h>
 
 // // GLFW toolkit
 // // Uses GL calls to open GL context, i.e. GLEW __MUST__ be first.
