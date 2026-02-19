@@ -1,10 +1,6 @@
 // icp.cpp
 // author: JJ
 
-// #include <iostream>
-
-// #include "app.hpp"
-
 #include <iostream>
 #include <chrono>
 #include <stack>
@@ -26,6 +22,7 @@
 // OpenGL math (and other additional GL libraries, at the end)
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
+
 #include "app.hpp"
 // define our application
 App app;
