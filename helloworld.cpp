@@ -42,34 +42,18 @@ int main()
     // ===  important for 2D raster graphics  ===
 
     // demo: use OpenCV
-    // cv::Mat x(cv::Size(100,100), CV_8UC3);
-    // cv::namedWindow("test_window");
+    cv::Mat x(cv::Size(100,100), CV_8UC3);
+    cv::namedWindow("test_window");
 
-    // // try to open first camera of any type and grab single image
-    // auto cam = cv::VideoCapture(0, cv::CAP_ANY);
-    // if (cam.isOpened())
-    //     cam.read(x);
+    // try to open first camera of any type and grab single image
+    auto cam = cv::VideoCapture(0, cv::CAP_ANY);
+    if (cam.isOpened())
+        cam.read(x);
 
-    // cv::imshow("test_window", x);
+    cv::imshow("test_window", x);
 
-    // cv::pollKey();
-    cv::Mat img = cv::imread("./lena.png");
+    cv::pollKey();
 
-    if (img.empty()) {
-        std::cerr << "Chyba: Nepodařilo se načíst obrázek!\n";
-        return -1;
-    }
-
-    // Vypíšeme info o obrázku
-    std::cout << "Rozměry obrázku: "
-              << img.cols << " x " << img.rows
-              << ", kanály: " << img.channels() << std::endl;
-
-    // Zobrazíme obrázek v okně
-    cv::imshow("Test OpenCV", img);
-
-    // Počkáme na stisk klávesy
-    cv::waitKey(0);
 
     std::cout << "Bye!\n";
 

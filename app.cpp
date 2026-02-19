@@ -6,13 +6,28 @@
 
 // #include "app.hpp"
 #include <iostream>
-#include <opencv4/opencv2/opencv.hpp>
+#include <opencv2/opencv.hpp>
 
-#include "app.hpp"
+
 #include <chrono>
 #include <stack>
  #include <random>
- #include "app.hpp"
+ #include <opencv2/opencv.hpp>
+
+// OpenGL Extension Wrangler: allow all multiplatform GL functions
+#include <GL/glew.h>
+// WGLEW = Windows GL Extension Wrangler (change for different platform)
+// platform specific functions (in this case Windows)
+#include <GL/wglew.h>
+
+// GLFW toolkit
+// Uses GL calls to open GL context, i.e. GLEW __MUST__ be first.
+#include <GLFW/glfw3.h>
+
+// OpenGL math (and other additional GL libraries, at the end)
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+//  #include "app.hpp"
 
 // // OpenGL Extension Wrangler: allow all multiplatform GL functions
 // #include <GL/glew.h>
@@ -48,38 +63,81 @@ App::App()
     std::cout << "Constructed...\n";
 }
 
-bool App::init()
-{
-    try {
-        // initialization code
-        //...
+// bool App::init()
+// {
+//     try {
+//         // initialization code
+//         //...
 
-        // Task 2: GLFW error callback
-        glfwSetErrorCallback(glfw_error_callback);
+//         // Task 2: GLFW error callback
+//         glfwSetErrorCallback(glfw_error_callback);
 
-        // Task 1: OpenGL debug output
-        if (GLEW_ARB_debug_output) {
-            glEnable(GL_DEBUG_OUTPUT);
-            glDebugMessageCallback(gl_debug_callback, nullptr);
-        }
+//         // Task 1: OpenGL debug output
+//         if (GLEW_ARB_debug_output) {
+//             glEnable(GL_DEBUG_OUTPUT);
+//             glDebugMessageCallback(gl_debug_callback, nullptr);
+//         }
 
-        // Register GLFW callbacks (minimal, empty)
-        if (window) {
-            glfwSetKeyCallback(window, [](GLFWwindow*, int, int, int, int){});
-            glfwSetFramebufferSizeCallback(window, [](GLFWwindow*, int, int){});
-            glfwSetMouseButtonCallback(window, [](GLFWwindow*, int, int, int){});
-            glfwSetCursorPosCallback(window, [](GLFWwindow*, double, double){});
-            glfwSetScrollCallback(window, [](GLFWwindow*, double, double){});
-        }
+//         // Register GLFW callbacks (minimal, empty)
+//         if (window) {
+//             glfwSetKeyCallback(window, [](GLFWwindow*, int, int, int, int){});
+//             glfwSetFramebufferSizeCallback(window, [](GLFWwindow*, int, int){});
+//             glfwSetMouseButtonCallback(window, [](GLFWwindow*, int, int, int){});
+//             glfwSetCursorPosCallback(window, [](GLFWwindow*, double, double){});
+//             glfwSetScrollCallback(window, [](GLFWwindow*, double, double){});
+//         }
 
-        // some init
-        // if (not_success)
-        //  throw std::runtime_error("something went bad");
+//         // some init
+//         // if (not_success)
+//         //  throw std::runtime_error("something went bad");
+//     }
+//       catch (std::exception const& e) {
+//         std::cerr << "Init failed : " << e.what() << std::endl;
+//         throw;
+//     }
+//     std::cout << "Initialized...\n";
+//     init_assets();
+//     return true;
+
+
+// }
+
+bool App::init() {
+
+    // GL init
+    {
+    	// init glfw
+    	// https://www.glfw.org/documentation.html
+        // TODO: add error checking!
+    	glfwInit();
+
+    	// open window (GL canvas) with no special properties
+        // https://www.glfw.org/docs/latest/quick.html#quick_create_window
+        // TODO: add error checking!
+    	window = glfwCreateWindow(800, 600, "OpenGL context", NULL, NULL);
+        glfwMakeContextCurrent(window);
+
+       	// init glew
+    	// http://glew.sourceforge.net/basic.html
+        // TODO: add error checking!
+    	glewInit();
+    	wglewInit();
+
+        if (!GLEW_ARB_direct_state_access)
+            throw std::runtime_error("No DSA :-(");
+
+
+        //TODO: get info about your GL context
     }
 
     init_assets();
     return true;
 }
+
+
+
+
+
 void App::init_assets(void) {
     //
     // Initialize pipeline: compile, link and use shaders
@@ -124,7 +182,7 @@ void App::init_assets(void) {
     //
     // Create and load data into GPU using OpenGL DSA (Direct State Access)
     //
-vertex v;
+    vertex v;
     // Create VAO + data description (similar to container)
     glCreateVertexArrays(1, &VAO_ID);
 
@@ -143,27 +201,65 @@ vertex v;
 }
 
 
-int App::run(void)
-{
-    try {
-        double lastTime = glfwGetTime();
-        int nbFrames = 0;
-        while (!glfwWindowShouldClose(window)) {
-            double currentTime = glfwGetTime();
-            nbFrames++;
-            if (currentTime - lastTime >= 1.0) {
-                double fps = double(nbFrames) / (currentTime - lastTime);
-                std::string title = "App - FPS: " + std::to_string(int(fps));
-                glfwSetWindowTitle(window, title.c_str());
-                nbFrames = 0;
-                lastTime = currentTime;
-            }
-            glfwPollEvents();
-        }
-    }
-    catch (std::exception const& e) {
-        std::cerr << "App failed : " << e.what() << std::endl;
-        return EXIT_FAILURE;
+// int App::run(void)
+// {
+//     try {
+//         double lastTime = glfwGetTime();
+//         int nbFrames = 0;
+//         while (!glfwWindowShouldClose(window)) {
+//             double currentTime = glfwGetTime();
+//             nbFrames++;
+//             if (currentTime - lastTime >= 1.0) {
+//                 double fps = double(nbFrames) / (currentTime - lastTime);
+//                 std::string title = "App - FPS: " + std::to_string(int(fps));
+//                 glfwSetWindowTitle(window, title.c_str());
+//                 nbFrames = 0;
+//                 lastTime = currentTime;
+//             }
+//             glfwPollEvents();
+//         }
+//     }
+//     catch (std::exception const& e) {
+//         std::cerr << "App failed : " << e.what() << std::endl;
+//         return EXIT_FAILURE;
+//     }
+
+//     while (!glfwWindowShouldClose(window)) {
+//         // clear canvas
+//         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+//         //set uniform parameter for shader
+//         // (try to change the color in key callback)
+//         // glUniform4f(uniform_color_location, r, g, b, a);
+
+//         //bind 3d object data
+//         glBindVertexArray(VAO_ID);
+
+//         // draw all VAO data
+//         glDrawArrays(GL_TRIANGLES, 0, triangle_vertices.size());
+
+//         // poll events, call callbacks, flip back<->front buffer
+//         glfwPollEvents();
+//         glfwSwapBuffers(window);
+//     }
+//     return EXIT_SUCCESS;
+// }
+
+
+
+int App::run() {
+
+    GLfloat r,g,b,a;
+    r=g=b=a=1.0f; //white color
+
+    // Activate shader program. There is only one program, so activation can be out of the loop.
+    // In more realistic scenarios, you will activate different shaders for different 3D objects.
+    glUseProgram(shader_prog_ID);
+
+    // Get uniform location in GPU program. This will not change, so it can be moved out of the game loop.
+    GLint uniform_color_location = glGetUniformLocation(shader_prog_ID, "uniform_Color");
+    if (uniform_color_location == -1) {
+        std::cerr << "Uniform location is not found in active shader program. Did you forget to activate it?\n";
     }
 
     while (!glfwWindowShouldClose(window)) {
