@@ -6,14 +6,13 @@
 #include <stack>
 #include <random>
 
-// #include <opencv4/opencv2/opencv.hpp>
-#include <opencv2/opencv.hpp>
+#include <opencv4/opencv2/opencv.hpp>
+// #include <opencv2/opencv.hpp>
 
 // OpenGL Extension Wrangler: allow all multiplatform GL functions
 #include <GL/glew.h>
 // WGLEW = Windows GL Extension Wrangler (change for different platform)
 // platform specific functions (in this case Windows)
-#include <GL/wglew.h>
 
 // GLFW toolkit
 // Uses GL calls to open GL context, i.e. GLEW __MUST__ be first.
@@ -27,10 +26,49 @@
 #include "app.hpp"
 
 
-// // OpenGL debug callback (Task 1)
+// OpenGL debug callback (Task 1) - from lecture
 static void GLAPIENTRY gl_debug_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
-    if (type == GL_DEBUG_TYPE_ERROR)
-        std::cerr << "GL ERROR: " << message << std::endl;
+    auto const src_str = [source]() {
+        switch (source) {
+        case GL_DEBUG_SOURCE_API: return "API";
+        case GL_DEBUG_SOURCE_WINDOW_SYSTEM: return "WINDOW SYSTEM";
+        case GL_DEBUG_SOURCE_SHADER_COMPILER: return "SHADER COMPILER";
+        case GL_DEBUG_SOURCE_THIRD_PARTY: return "THIRD PARTY";
+        case GL_DEBUG_SOURCE_APPLICATION: return "APPLICATION";
+        case GL_DEBUG_SOURCE_OTHER: return "OTHER";
+        default: return "Unknown";
+        }
+    }();
+
+    auto const type_str = [type]() {
+        switch (type) {
+        case GL_DEBUG_TYPE_ERROR: return "ERROR";
+        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: return "DEPRECATED_BEHAVIOR";
+        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR: return "UNDEFINED_BEHAVIOR";
+        case GL_DEBUG_TYPE_PORTABILITY: return "PORTABILITY";
+        case GL_DEBUG_TYPE_PERFORMANCE: return "PERFORMANCE";
+        case GL_DEBUG_TYPE_MARKER: return "MARKER";
+        case GL_DEBUG_TYPE_OTHER: return "OTHER";
+        default: return "Unknown";
+        }
+    }();
+
+    auto const severity_str = [severity]() {
+        switch (severity) {
+        case GL_DEBUG_SEVERITY_NOTIFICATION: return "NOTIFICATION";
+        case GL_DEBUG_SEVERITY_LOW: return "LOW";
+        case GL_DEBUG_SEVERITY_MEDIUM: return "MEDIUM";
+        case GL_DEBUG_SEVERITY_HIGH: return "HIGH";
+        default: return "Unknown";
+        }
+    }();
+
+    std::cout << "[GL CALLBACK]: " <<
+        "source = " << src_str <<
+        ", type = " << type_str <<
+        ", severity = " << severity_str <<
+        ", ID = '" << id << '\'' <<
+        ", message = '" << message << '\'' << std::endl;
 }
 
 // // GLFW error callback (Task 2)
@@ -69,6 +107,14 @@ bool App::init() {
         glfwMakeContextCurrent(window);
         glfwSwapInterval(1); // V-Sync ON
 
+        // Register additional callbacks (Task 3)
+        glfwSetWindowUserPointer(window, this);
+        glfwSetKeyCallback(window, key_callback);
+        glfwSetFramebufferSizeCallback(window, fbsize_callback);
+        glfwSetMouseButtonCallback(window, mouse_button_callback);
+        glfwSetCursorPosCallback(window, cursor_position_callback);
+        glfwSetScrollCallback(window, scroll_callback);
+
         // -------------------------
         // GLEW INIT
         // -------------------------
@@ -76,8 +122,6 @@ bool App::init() {
 
         if (glewInit() != GLEW_OK)
             throw std::runtime_error("GLEW initialization failed.");
-
-        wglewInit();
 
         if (!GLEW_ARB_direct_state_access)
             throw std::runtime_error("No Direct State Access support :-(");
@@ -183,8 +227,6 @@ void App::init_assets(void) {
 
 int App::run() {
 
-    GLfloat r = 0.0f, g = 0.0f, b = 1.0f, a = 1.0f;
-
     glUseProgram(shader_prog_ID);
 
     GLint uniform_color_location =
@@ -214,12 +256,19 @@ int App::run() {
         }
 
         // -------------------------
+        // TIME-BASED COLOR (Task 3)
+        // -------------------------
+        tri_r = (float)sin(currentTime) * 0.5f + 0.5f;
+        tri_g = (float)cos(currentTime) * 0.5f + 0.5f;
+        tri_b = (float)sin(currentTime * 0.5f) * 0.5f + 0.5f;
+
+        // -------------------------
         // RENDER
         // -------------------------
-        glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
+        glClearColor(bg_r, bg_g, bg_b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUniform4f(uniform_color_location, r, g, b, a);
+        glUniform4f(uniform_color_location, tri_r, tri_g, tri_b, 1.0f);
 
         glBindVertexArray(VAO_ID);
         glDrawArrays(GL_TRIANGLES, 0,
@@ -241,4 +290,49 @@ App::~App()
     // clean-up
     cv::destroyAllWindows();
     std::cout << "Bye...\n";
+}
+
+// ----------------------------------------------------------------------------
+// CALLBACKS IMPLEMENTATION
+// ----------------------------------------------------------------------------
+
+void App::key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    App* app = static_cast<App*>(glfwGetWindowUserPointer(window));
+    
+    if ((action == GLFW_PRESS) || (action == GLFW_REPEAT)) {
+        switch (key) {
+        case GLFW_KEY_ESCAPE:
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+            break;
+        case GLFW_KEY_C:
+            // Task 3: Background color change
+            app->bg_r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+            app->bg_g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+            app->bg_b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+void App::fbsize_callback(GLFWwindow* window, int width, int height) {
+    glViewport(0, 0, width, height);
+}
+
+void App::mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+    if (action == GLFW_PRESS)
+        std::cout << "Mouse button pressed: " << button << std::endl;
+}
+
+void App::cursor_position_callback(GLFWwindow* window, double xpos, double ypos) {
+    // Optional: Log or use for interaction
+}
+
+void App::scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
+    if (yoffset > 0.0) {
+        std::cout << "wheel up...\n";
+    } else if (yoffset < 0.0) {
+        std::cout << "wheel down...\n";
+    }
 }

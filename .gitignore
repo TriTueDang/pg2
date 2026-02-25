@@ -36,3 +36,6 @@ CMakePresets.json
 *.log
 
 .vscode/
+
+# Lab materials
+02lab - 3d window*
