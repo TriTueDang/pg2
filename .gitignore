@@ -37,6 +37,6 @@ CMakePresets.json
 *.log
 
 .vscode/
-
+imgui.ini
 # Lab materials
 02lab - 3d window*

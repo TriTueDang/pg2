@@ -12,6 +12,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(glfw3 CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
+find_package(imgui CONFIG REQUIRED)
 
 if(WIN32)
     # Na Windows zkusíme najít OpenCV standardně, jinak použijeme pevnou cestu
@@ -39,6 +40,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     fmt::fmt
     GLEW::GLEW
     glfw
+    imgui::imgui
     OpenGL::GL
     glm::glm
     nlohmann_json::nlohmann_json
