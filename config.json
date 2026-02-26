@@ -1,0 +1,8 @@
+{
+    "window": {
+        "width": 720,
+        "height": 576,
+        "title": "OpenGL context"
+    },
+    "vsync": true
+}

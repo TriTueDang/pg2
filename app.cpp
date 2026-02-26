@@ -30,6 +30,10 @@
 #include "assets.hpp"
 #include "app.hpp"
 
+// json
+#include <fstream>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
 // OpenGL debug callback (Task 1) - from lecture
 static void GLAPIENTRY gl_debug_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
@@ -105,12 +109,17 @@ bool App::init() {
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 
-        window = glfwCreateWindow(800, 600, "OpenGL context", nullptr, nullptr);
+        load_config("config.json");
+        window = glfwCreateWindow(window_width,
+                          window_height,
+                          window_title.c_str(),
+                          nullptr,
+                          nullptr);
         if (!window)
             throw std::runtime_error("Window creation failed.");
 
         glfwMakeContextCurrent(window);
-        glfwSwapInterval(1); // V-Sync ON
+        glfwSwapInterval(vsync_enabled ? 1 : 0);
 
         // Register additional callbacks (Task 3)
         glfwSetWindowUserPointer(window, this);
@@ -166,6 +175,28 @@ bool App::init() {
         return false;
     }
 }
+bool App::load_config(const std::string& filename)
+{
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Could not open config file. Using defaults.\n";
+        return false;
+    }
+
+    json config;
+    file >> config;
+
+    if (config.contains("window")) {
+        window_width  = config["window"].value("width", 800);
+        window_height = config["window"].value("height", 600);
+        window_title  = config["window"].value("title", "OpenGL context");
+    }
+
+    vsync_enabled = config.value("vsync", true);
+
+    return true;
+}
+
 
 void App::init_assets(void) {
     //
@@ -253,8 +284,11 @@ int App::run() {
 
         if (currentTime - lastTime >= 1.0) {
             double fps = double(nbFrames) / (currentTime - lastTime);
+
             std::string title = "OpenGL context - FPS: " +
-                                std::to_string(int(fps));
+                    std::to_string(int(fps)) +
+                    " - VSync: " +
+                    (vsync_enabled ? "ON" : "OFF");
             glfwSetWindowTitle(window, title.c_str());
             nbFrames = 0;
             lastTime = currentTime;
@@ -315,6 +349,16 @@ void App::key_callback(GLFWwindow* window, int key, int scancode, int action, in
             app->bg_g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
             app->bg_b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
             break;
+        case GLFW_KEY_V:
+            app->vsync_enabled = !app->vsync_enabled;
+
+            if (app->vsync_enabled) {
+                glfwSwapInterval(1);   // Enable VSync
+            } else {
+                glfwSwapInterval(0);   // Disable VSync
+            }
+            break;
+
         default:
             break;
         }

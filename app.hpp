@@ -10,7 +10,10 @@
 
 class App {
 private:
-
+    int window_width = 800;
+    int window_height = 600;
+    std::string window_title = "OpenGL context ";
+    bool vsync_enabled = true;
     //new GL stuff
     GLFWwindow* window = nullptr;
 
@@ -34,6 +37,7 @@ public:
 
     bool init(void);
     void init_assets(void);
+    bool load_config(const std::string& filename);
     int run(void);
 
     // Callbacks
