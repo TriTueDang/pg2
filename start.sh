@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# Zjištění operačního systému
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    PRESET="msvc-vcpkg"
+    EXE="./build/pg2"
+elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
+    PRESET="windows-vcpkg"
+    EXE="./build/pg2.exe"
+else
+    echo "Unsupported OS: $OSTYPE"
+    exit 1
+fi
+
+echo "Building project using preset: $PRESET..."
+
+# Konfigurace a sestavení
+cmake --preset "$PRESET"
+if [ $? -ne 0 ]; then
+    echo "Configuration failed!"
+    exit 1
+fi
+
+cmake --build build --target pg2
+if [ $? -ne 0 ]; then
+    echo "Build failed!"
+    exit 1
+fi
+
+# Spuštění
+if [ -f "$EXE" ]; then
+    echo "Running application..."
+    $EXE
+else
+    echo "Executable not found: $EXE"
+    exit 1
+fi
