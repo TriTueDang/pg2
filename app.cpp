@@ -6,8 +6,13 @@
 #include <stack>
 #include <random>
 
-#include <opencv4/opencv2/opencv.hpp>
-// #include <opencv2/opencv.hpp>
+#if __has_include(<opencv2/opencv.hpp>)
+    #include <opencv2/opencv.hpp>
+#elif __has_include(<opencv4/opencv2/opencv.hpp>)
+    #include <opencv4/opencv2/opencv.hpp>
+#else
+    #error "OpenCV hlavičkové soubory nebyly nalezeny!"
+#endif
 
 // OpenGL Extension Wrangler: allow all multiplatform GL functions
 #include <GL/glew.h>
@@ -298,7 +303,7 @@ App::~App()
 
 void App::key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     App* app = static_cast<App*>(glfwGetWindowUserPointer(window));
-    
+
     if ((action == GLFW_PRESS) || (action == GLFW_REPEAT)) {
         switch (key) {
         case GLFW_KEY_ESCAPE:

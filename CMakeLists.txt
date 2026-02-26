@@ -33,7 +33,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     fmt::fmt
     GLEW::GLEW
     glfw
-    OpenGL
+    ${OPENGL_LIBRARIES}
     glm::glm
     nlohmann_json::nlohmann_json
     ${OpenCV_LIBS}

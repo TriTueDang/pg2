@@ -7,8 +7,13 @@
 #include <random>
 
 // OpenCV (does not depend on GL)
-//#include <opencv2/opencv.hpp>
-#include <opencv4/opencv2/opencv.hpp>
+#if __has_include(<opencv2/opencv.hpp>)
+    #include <opencv2/opencv.hpp>
+#elif __has_include(<opencv4/opencv2/opencv.hpp>)
+    #include <opencv4/opencv2/opencv.hpp>
+#else
+    #error "OpenCV hlavičkové soubory nebyly nalezeny!"
+#endif
 
 // OpenGL Extension Wrangler: allow all multiplatform GL functions
 #include <GL/glew.h>
