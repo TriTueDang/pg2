@@ -109,6 +109,9 @@ bool App::init() {
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 
+        // Task 1.3: hide window during initialization
+        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+
         load_config("config.json");
         window = glfwCreateWindow(window_width,
                           window_height,
@@ -168,6 +171,10 @@ bool App::init() {
         std::cout << "Initialized...\n";
 
         init_assets();
+
+        // Task 1.3: show window after all is loaded
+        glfwShowWindow(window);
+
         return true;
     }
     catch (std::exception const& e) {
