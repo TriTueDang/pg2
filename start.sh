@@ -14,13 +14,20 @@ fi
 
 echo "Building project using preset: $PRESET..."
 
-# Konfigurace a sestavení
+# Pokus o konfiguraci
 cmake --preset "$PRESET"
 if [ $? -ne 0 ]; then
-    echo "Configuration failed!"
-    exit 1
+    echo "Configuration failed! Cleaning build directory and retrying..."
+    # Pokud konfigurace selže (např. kvůli změně generátoru), zkusíme smazat build a znovu
+    rm -rf build
+    cmake --preset "$PRESET"
+    if [ $? -ne 0 ]; then
+        echo "Configuration failed again!"
+        exit 1
+    fi
 fi
 
+# Sestavení
 cmake --build build --target pg2
 if [ $? -ne 0 ]; then
     echo "Build failed!"

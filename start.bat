@@ -6,9 +6,16 @@ echo Building project using preset: %PRESET%...
 
 cmake --preset %PRESET%
 if %ERRORLEVEL% neq 0 (
-    echo Configuration failed!
-    pause
-    exit /b %ERRORLEVEL%
+    echo Configuration failed! Cleaning build directory and retrying...
+    if exist build (
+        rd /s /q build
+    )
+    cmake --preset %PRESET%
+    if %ERRORLEVEL% neq 0 (
+        echo Configuration failed again!
+        pause
+        exit /b %ERRORLEVEL%
+    )
 )
 
 cmake --build build --target pg2
