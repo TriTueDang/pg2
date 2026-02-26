@@ -5,6 +5,7 @@
     "glew",
     "glfw3",
     "glm",
-    "nlohmann-json"
+    "nlohmann-json",
+    "opencv4"
   ]
 }

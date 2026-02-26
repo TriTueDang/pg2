@@ -11,9 +11,13 @@ find_package(glm CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(glfw3 CONFIG REQUIRED)
+find_package(OpenGL REQUIRED)
 
 if(WIN32)
-    find_package(OpenCV CONFIG REQUIRED PATHS "C:/opencv/opencv/build")
+    find_package(OpenCV CONFIG QUIET)
+    if(NOT OpenCV_FOUND)
+        find_package(OpenCV CONFIG REQUIRED PATHS "C:/opencv/opencv/build")
+    endif()
 elseif(UNIX)
     find_package(OpenCV CONFIG REQUIRED)
 endif()
@@ -33,7 +37,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     fmt::fmt
     GLEW::GLEW
     glfw
-    ${OPENGL_LIBRARIES}
+    OpenGL::GL
     glm::glm
     nlohmann_json::nlohmann_json
     ${OpenCV_LIBS}
