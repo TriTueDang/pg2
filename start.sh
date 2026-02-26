@@ -36,8 +36,12 @@ fi
 
 # Spuštění
 if [ -f "$EXE" ]; then
-    echo "Running application..."
-    $EXE
+    echo "Running application (forcing NVIDIA if available)..."
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia $EXE
+    else
+        $EXE
+    fi
 else
     echo "Executable not found: $EXE"
     exit 1
