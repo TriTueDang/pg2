@@ -14,12 +14,14 @@ find_package(glfw3 CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 
 if(WIN32)
+    # Na Windows zkusíme najít OpenCV standardně, jinak použijeme pevnou cestu
     find_package(OpenCV CONFIG QUIET)
     if(NOT OpenCV_FOUND)
         find_package(OpenCV CONFIG REQUIRED PATHS "C:/opencv/opencv/build")
     endif()
 elseif(UNIX)
-    find_package(OpenCV CONFIG REQUIRED)
+    # Na Linuxu použijeme systémové OpenCV
+    find_package(OpenCV REQUIRED)
 endif()
 
 set(PROJECT_SOURCES
