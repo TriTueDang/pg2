@@ -358,6 +358,9 @@ void App::key_callback(GLFWwindow* window, int key, int scancode, int action, in
                 glfwSwapInterval(0);   // Disable VSync
             }
             break;
+        case GLFW_KEY_F:
+            app->toggle_fullscreen();
+            break;
 
         default:
             break;
@@ -383,5 +386,23 @@ void App::scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
         std::cout << "wheel up...\n";
     } else if (yoffset < 0.0) {
         std::cout << "wheel down...\n";
+    }
+}
+
+void App::toggle_fullscreen() {
+    if (!fullscreen_enabled) {
+        // Switch to fullscreen
+        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+        glfwGetWindowPos(window, &saved_window_x, &saved_window_y);
+        glfwGetWindowSize(window, &saved_window_width, &saved_window_height);
+
+        glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+        fullscreen_enabled = true;
+    } else {
+        // Switch back to windowed
+        glfwSetWindowMonitor(window, nullptr, saved_window_x, saved_window_y, saved_window_width, saved_window_height, 0);
+        fullscreen_enabled = false;
     }
 }

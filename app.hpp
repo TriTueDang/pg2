@@ -15,6 +15,14 @@ private:
     std::string window_title = "OpenGL context ";
     bool vsync_enabled = true;
     //new GL stuff
+    bool fullscreen_enabled = false;
+    int saved_window_x = 0;
+    int saved_window_y = 0;
+    int saved_window_width = 800;
+    int saved_window_height = 600;
+
+    void toggle_fullscreen();
+
     GLFWwindow* window = nullptr;
 
     GLuint shader_prog_ID{ 0 };
