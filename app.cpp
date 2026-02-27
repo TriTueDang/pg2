@@ -416,7 +416,7 @@ int App::run(void)
 				ImGui::SetNextWindowSize(ImVec2(250, 100));
 
 				ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-				ImGui::Text("V-Sync: %s", is_vsync_on ? "ON" : "OFF");
+				ImGui::Text("V-Sync: %s", vsync_enabled ? "ON" : "OFF");
 				ImGui::Text("FPS: %.1f", FPS);
 				ImGui::Text("(press RMB to release mouse)");
 				ImGui::Text("(hit D to show/hide info)");
@@ -547,8 +547,6 @@ void App::key_callback(GLFWwindow* window, int key, int scancode, int action, in
 			break;
 		}
 	}
-}
-
 }
 
 void App::fbsize_callback(GLFWwindow* window, int width, int height) {
