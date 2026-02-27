@@ -178,7 +178,7 @@ bool App::load_config(const std::string& filename)
         window_title  = config["window"].value("title", "OpenGL context");
     }
 
-    vsync_enabled = config.value("vsync", true);
+    is_vsync_on = config.value("vsync", true);
 
     return true;
 }
@@ -238,15 +238,18 @@ void App::init_glfw(void)
 		throw std::runtime_error("Window creation failed.");
 
 	glfwMakeContextCurrent(window);
-	glfwSwapInterval(vsync_enabled ? 1 : 0);
+	glfwSwapInterval(is_vsync_on ? 1 : 0);
+
+	// Task 1.2: initial mouse capture
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	// Register callbacks
 	glfwSetWindowUserPointer(window, this);
-	glfwSetKeyCallback(window, key_callback);
-	glfwSetFramebufferSizeCallback(window, fbsize_callback);
-	glfwSetMouseButtonCallback(window, mouse_button_callback);
-	glfwSetCursorPosCallback(window, cursor_position_callback);
-	glfwSetScrollCallback(window, scroll_callback);
+	glfwSetKeyCallback(window, glfw_key_callback);
+	glfwSetFramebufferSizeCallback(window, glfw_fbsize_callback);
+	glfwSetMouseButtonCallback(window, glfw_mouse_button_callback);
+	glfwSetCursorPosCallback(window, glfw_cursor_position_callback);
+	glfwSetScrollCallback(window, glfw_scroll_callback);
 }
 
 // ---------------------------------------------------------------------------
@@ -416,7 +419,7 @@ int App::run(void)
 				ImGui::SetNextWindowSize(ImVec2(250, 100));
 
 				ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-				ImGui::Text("V-Sync: %s", vsync_enabled ? "ON" : "OFF");
+				ImGui::Text("V-Sync: %s", is_vsync_on ? "ON" : "OFF");
 				ImGui::Text("FPS: %.1f", FPS);
 				ImGui::Text("(press RMB to release mouse)");
 				ImGui::Text("(hit D to show/hide info)");
@@ -461,7 +464,7 @@ int App::run(void)
 			frame_begin_timepoint = now; // set new start
 
 			fps_counter_frames++;
-			if (now - fps_last_displayed >= 1) {
+			if (now - fps_last_displayed >= 1.0) {
 				FPS = fps_counter_frames / (now - fps_last_displayed);
 				fps_last_displayed = now;
 				fps_counter_frames = 0;
@@ -506,14 +509,24 @@ App::~App()
 // CALLBACKS IMPLEMENTATION
 // ----------------------------------------------------------------------------
 
-void App::key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+void App::glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
 	auto this_inst = static_cast<App*>(glfwGetWindowUserPointer(window));
 	if ((action == GLFW_PRESS) || (action == GLFW_REPEAT)) {
 		switch (key) {
 		case GLFW_KEY_ESCAPE:
-			// Exit The App
-			glfwSetWindowShouldClose(window, GLFW_TRUE);
+			// Task 1.2: capture/release mouse OR exit
+			{
+				int mode = glfwGetInputMode(window, GLFW_CURSOR);
+				if (mode == GLFW_CURSOR_DISABLED) {
+					// first ESC uvolní kurzor
+					glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+				}
+				else {
+					// druhý ESC (nebo při uvolněném) ukončí aplikaci
+					glfwSetWindowShouldClose(window, GLFW_TRUE);
+				}
+			}
 			break;
 		case GLFW_KEY_C:
 			// Task 3: Background color change
@@ -522,9 +535,9 @@ void App::key_callback(GLFWwindow* window, int key, int scancode, int action, in
 			this_inst->bg_b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
 			break;
 		case GLFW_KEY_V:
-			this_inst->vsync_enabled = !this_inst->vsync_enabled;
-			glfwSwapInterval(this_inst->vsync_enabled ? 1 : 0);
-			std::cout << "VSync: " << (this_inst->vsync_enabled ? "ON" : "OFF") << "\n";
+			this_inst->is_vsync_on = !this_inst->is_vsync_on;
+			glfwSwapInterval(this_inst->is_vsync_on ? 1 : 0);
+			std::cout << "VSync: " << (this_inst->is_vsync_on ? "ON" : "OFF") << "\n";
 			break;
 		case GLFW_KEY_F:
 			this_inst->toggle_fullscreen();
@@ -549,11 +562,11 @@ void App::key_callback(GLFWwindow* window, int key, int scancode, int action, in
 	}
 }
 
-void App::fbsize_callback(GLFWwindow* window, int width, int height) {
+void App::glfw_fbsize_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
 }
 
-void App::mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+void App::glfw_mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
 if (action == GLFW_PRESS) {
 		switch (button) {
 		case GLFW_MOUSE_BUTTON_LEFT: {
@@ -578,11 +591,11 @@ if (action == GLFW_PRESS) {
 	}
 }
 
-void App::cursor_position_callback(GLFWwindow* window, double xpos, double ypos) {
+void App::glfw_cursor_position_callback(GLFWwindow* window, double xpos, double ypos) {
     // Optional: Log or use for interaction
 }
 
-void App::scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
+void App::glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
     if (yoffset > 0.0) {
         std::cout << "wheel up...\n";
     } else if (yoffset < 0.0) {
@@ -593,13 +606,37 @@ void App::scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
 void App::toggle_fullscreen() {
     if (!fullscreen_enabled) {
         // Switch to fullscreen
-        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+		int xpos, ypos, width, height;
+		glfwGetWindowPos(window, &xpos, &ypos);
+		glfwGetWindowSize(window, &width, &height);
 
-        glfwGetWindowPos(window, &saved_window_x, &saved_window_y);
-        glfwGetWindowSize(window, &saved_window_width, &saved_window_height);
+		// Find current monitor (the one where the window center is)
+		int monitor_count;
+		GLFWmonitor** monitors = glfwGetMonitors(&monitor_count);
+		GLFWmonitor* current_monitor = glfwGetPrimaryMonitor();
 
-        glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+		int center_x = xpos + width / 2;
+		int center_y = ypos + height / 2;
+
+		for (int i = 0; i < monitor_count; i++) {
+			int mx, my;
+			const GLFWvidmode* mode = glfwGetVideoMode(monitors[i]);
+			glfwGetMonitorPos(monitors[i], &mx, &my);
+			if (center_x >= mx && center_x < mx + mode->width &&
+				center_y >= my && center_y < my + mode->height) {
+				current_monitor = monitors[i];
+				break;
+			}
+		}
+
+        const GLFWvidmode* mode = glfwGetVideoMode(current_monitor);
+
+        saved_window_x = xpos;
+		saved_window_y = ypos;
+        saved_window_width = width;
+		saved_window_height = height;
+
+        glfwSetWindowMonitor(window, current_monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
         fullscreen_enabled = true;
     } else {
         // Switch back to windowed

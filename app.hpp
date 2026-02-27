@@ -21,7 +21,7 @@ private:
     int window_width = 800;
     int window_height = 600;
     std::string window_title = "OpenGL context ";
-    bool vsync_enabled = true;
+    bool is_vsync_on = true;
     //new GL stuff
     bool fullscreen_enabled = false;
     int saved_window_x = 0;
@@ -70,11 +70,11 @@ public:
     int run(void);
 
     // Callbacks
-    static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
-    static void fbsize_callback(GLFWwindow* window, int width, int height);
-    static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
-    static void cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
-    static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+    static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+    static void glfw_fbsize_callback(GLFWwindow* window, int width, int height);
+    static void glfw_mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
+    static void glfw_cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
+    static void glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 
     void destroy(void);
     ~App();
