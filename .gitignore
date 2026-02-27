@@ -37,7 +37,7 @@ CMakePresets.json
 *.log
 
 .vscode/
-
+imgui.ini
 # Lab materials
 *lab*/
 02lab*

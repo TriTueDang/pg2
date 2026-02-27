@@ -1,37 +1,47 @@
-// icp.cpp
+// app.cpp
+// Main application implementation for the pg2 project
 // author: JJ
 
-#include <iostream>
-#include <chrono>
-#include <stack>
-#include <random>
+// --- Standard library headers ------------------------------------------------
+#include <iostream>   // i/o streams
+#include <fstream>    // file input/output (used by JSON loader)
+#include <chrono>     // timing utilities
+#include <stack>      // example container (unused?)
+#include <random>     // random numbers
+#include <string>     // std::string used in window title
 
+// --- Third-party libraries ---------------------------------------------------
+
+// OpenCV: conditionally include whichever installed path is available
 #if __has_include(<opencv2/opencv.hpp>)
     #include <opencv2/opencv.hpp>
 #elif __has_include(<opencv4/opencv2/opencv.hpp>)
     #include <opencv4/opencv2/opencv.hpp>
 #else
-    #error "OpenCV hlavičkové soubory nebyly nalezeny!"
+    #error "OpenCV header files not found!"
 #endif
 
-// OpenGL Extension Wrangler: allow all multiplatform GL functions
+// OpenGL Extension Wrangler (GLEW) - provides modern GL functions
 #include <GL/glew.h>
-// WGLEW = Windows GL Extension Wrangler (change for different platform)
-// platform specific functions (in this case Windows)
+// Note: using WGLEW on Windows; adjust for other platforms if necessary
 
-// GLFW toolkit
-// Uses GL calls to open GL context, i.e. GLEW __MUST__ be first.
+// GLFW toolkit for window/context creation and input handling
 #include <GLFW/glfw3.h>
 
-// OpenGL math (and other additional GL libraries, at the end)
-#include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
+// GLM: OpenGL mathematics library (commented out until needed)
+// #include <glm/glm.hpp>
+// #include <glm/gtc/type_ptr.hpp>
 
+// Assets and project-specific headers
 #include "assets.hpp"
 #include "app.hpp"
 
-// json
-#include <fstream>
+// ImGUI: immediate-mode GUI for debug interfaces
+#include <imgui.h>               // core
+#include <imgui_impl_glfw.h>     // GLFW binding
+#include <imgui_impl_opengl3.h>  // OpenGL3 binding
+
+// JSON parsing library
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
@@ -98,58 +108,19 @@ bool App::init() {
         // -------------------------
         // GLFW INIT
         // -------------------------
-        glfwSetErrorCallback(glfw_error_callback);
-
-        if (!glfwInit())
-            throw std::runtime_error("GLFW initialization failed.");
-
-        // OpenGL 4.6 core
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
-
-        // Task 1.3: hide window during initialization
-        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+        init_glfw();
 
         load_config("config.json");
-        window = glfwCreateWindow(window_width,
-                          window_height,
-                          window_title.c_str(),
-                          nullptr,
-                          nullptr);
-        if (!window)
-            throw std::runtime_error("Window creation failed.");
-
-        glfwMakeContextCurrent(window);
-        glfwSwapInterval(vsync_enabled ? 1 : 0);
-
-        // Register additional callbacks (Task 3)
-        glfwSetWindowUserPointer(window, this);
-        glfwSetKeyCallback(window, key_callback);
-        glfwSetFramebufferSizeCallback(window, fbsize_callback);
-        glfwSetMouseButtonCallback(window, mouse_button_callback);
-        glfwSetCursorPosCallback(window, cursor_position_callback);
-        glfwSetScrollCallback(window, scroll_callback);
 
         // -------------------------
         // GLEW INIT
         // -------------------------
-        glewExperimental = GL_TRUE;
-
-        if (glewInit() != GLEW_OK)
-            throw std::runtime_error("GLEW initialization failed.");
-
-        if (!GLEW_ARB_direct_state_access)
-            throw std::runtime_error("No Direct State Access support :-(");
+        init_glew();
 
         // -------------------------
         // OPENGL DEBUG
         // -------------------------
-        if (GLEW_ARB_debug_output) {
-            glEnable(GL_DEBUG_OUTPUT);
-            glDebugMessageCallback(gl_debug_callback, nullptr);
-        }
+        init_gl_debug();
 
         // -------------------------
         // VIEWPORT + BASIC STATE
@@ -161,19 +132,27 @@ bool App::init() {
         glEnable(GL_DEPTH_TEST);
 
         // -------------------------
-        // PRINT GL INFO
+        // PRINT INFO
         // -------------------------
-        std::cout << "OpenGL Vendor:   " << glGetString(GL_VENDOR) << std::endl;
-        std::cout << "OpenGL Renderer: " << glGetString(GL_RENDERER) << std::endl;
-        std::cout << "OpenGL Version:  " << glGetString(GL_VERSION) << std::endl;
-        std::cout << "GLSL Version:    " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
+        print_glfw_info();
+        print_opencv_info();
+        print_glm_info();
+        print_gl_info();
 
         std::cout << "Initialized...\n";
 
-        init_assets();
+		// init assets (models, sounds, textures, level map, ...)
+		init_assets();
+
+		// Initialize ImGUI
+		init_imgui();
+
+		// Initialize OpenCV (if needed)
+		init_opencv();
 
         // Task 1.3: show window after all is loaded
         glfwShowWindow(window);
+
 
         return true;
     }
@@ -204,6 +183,129 @@ bool App::load_config(const std::string& filename)
     return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// GUI initialization
+// ---------------------------------------------------------------------------
+void App::init_imgui()
+{
+	// see https://github.com/ocornut/imgui/wiki/Getting-Started
+
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGui_ImplGlfw_InitForOpenGL(window, true);
+	ImGui_ImplOpenGL3_Init();
+	std::cout << "ImGUI version: " << ImGui::GetVersion() << "\n";
+}
+
+// ---------------------------------------------------------------------------
+// OpenCV support stub
+// ---------------------------------------------------------------------------
+void App::init_opencv()
+{
+	// Placeholder for any OpenCV-specific setup (e.g. allocate windows, set
+	// parameters).  At the moment the application does not create any
+	// OpenCV windows during initialization.
+}
+
+// ---------------------------------------------------------------------------
+// GLFW initialization and window creation
+// ---------------------------------------------------------------------------
+void App::init_glfw(void)
+{
+	// register error callback before any GLFW calls
+	glfwSetErrorCallback(glfw_error_callback);
+
+	if (!glfwInit())
+		throw std::runtime_error("GLFW initialization failed.");
+
+	// OpenGL 4.6 core
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
+
+	// Task 1.3: hide window during initialization
+	glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+
+	window = glfwCreateWindow(window_width,
+		window_height,
+		window_title.c_str(),
+		nullptr,
+		nullptr);
+
+	if (!window)
+		throw std::runtime_error("Window creation failed.");
+
+	glfwMakeContextCurrent(window);
+	glfwSwapInterval(vsync_enabled ? 1 : 0);
+
+	// Register callbacks
+	glfwSetWindowUserPointer(window, this);
+	glfwSetKeyCallback(window, key_callback);
+	glfwSetFramebufferSizeCallback(window, fbsize_callback);
+	glfwSetMouseButtonCallback(window, mouse_button_callback);
+	glfwSetCursorPosCallback(window, cursor_position_callback);
+	glfwSetScrollCallback(window, scroll_callback);
+}
+
+// ---------------------------------------------------------------------------
+// GLEW initialization
+// ---------------------------------------------------------------------------
+void App::init_glew(void)
+{
+	// enable experimental features to get modern functionality
+	glewExperimental = GL_TRUE;
+
+	if (glewInit() != GLEW_OK)
+		throw std::runtime_error("GLEW initialization failed.");
+
+	// make sure necessary extension for Direct State Access is available
+	if (!GLEW_ARB_direct_state_access)
+		throw std::runtime_error("No Direct State Access support :-(");
+}
+
+// ---------------------------------------------------------------------------
+// OpenGL debug output setup
+// ---------------------------------------------------------------------------
+void App::init_gl_debug()
+{
+	if (GLEW_ARB_debug_output) {
+		// enable synchronous debug messages and register our callback
+		glEnable(GL_DEBUG_OUTPUT);
+		glDebugMessageCallback(gl_debug_callback, nullptr);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Logging helpers
+// ---------------------------------------------------------------------------
+void App::print_gl_info()
+{
+	std::cout << "OpenGL Vendor:   " << glGetString(GL_VENDOR) << std::endl;
+	std::cout << "OpenGL Renderer: " << glGetString(GL_RENDERER) << std::endl;
+	std::cout << "OpenGL Version:  " << glGetString(GL_VERSION) << std::endl;
+	std::cout << "GLSL Version:    " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
+}
+
+void App::print_glfw_info(void)
+{
+	// display the version of GLFW used for diagnostics
+	std::cout << "GLFW Version:    " << glfwGetVersionString() << std::endl;
+}
+
+void App::print_opencv_info()
+{
+	// report OpenCV version if OpenCV is in use
+	std::cout << "OpenCV Version:  " << CV_VERSION << std::endl;
+}
+
+void App::print_glm_info()
+{
+	// GLM is currently not included, so version info is not available
+	// Uncomment glm includes in app.cpp and the header if you need this
+	std::cout << "GLM Version:     (not included)" << std::endl;
+}
 
 void App::init_assets(void) {
     //
@@ -267,112 +369,186 @@ void App::init_assets(void) {
     glVertexArrayVertexBuffer(VAO_ID, 0, VBO_ID, 0, sizeof(vertex)); // (GLuint vaobj, GLuint bindingindex, GLuint buffer, GLintptr offset, GLsizei stride)
 }
 
+int App::run(void)
+{
+	/*
+	* Typical game loop:
 
-int App::run() {
+			// INIT: Initial positions and state
+			while (application_should_not_close)
+			{
+				// UPDATE: Update game state
+				// RENDER: Render content
+				// SWAP: Swap back/front buffer
+				// VSYNC: Wait for vertical retrace (e.g. 1/60 of a second)
+				// POLL: Poll events, dispatch
+			}
+	*/
+	try {
+		// Setup shader program and get uniform location
+		glUseProgram(shader_prog_ID);
+		GLint uniform_color_location = glGetUniformLocation(shader_prog_ID, "uniform_Color");
+		if (uniform_color_location == -1)
+			std::cerr << "Uniform 'uniform_Color' not found.\n";
 
-    glUseProgram(shader_prog_ID);
+		double now = glfwGetTime();
+		// FPS related
+		double fps_last_displayed = now;
+		int fps_counter_frames = 0;
+		double FPS = 0.0;
 
-    GLint uniform_color_location =
-        glGetUniformLocation(shader_prog_ID, "uniform_Color");
+		// animation related
+		double frame_begin_timepoint = now;
+		double previous_frame_render_time{};
 
-    if (uniform_color_location == -1)
-        std::cerr << "Uniform 'uniform_Color' not found.\n";
+		// Clear color saved to OpenGL state machine: no need to set repeatedly in game loop
+		glClearColor(0, 0, 0, 0);
 
-    double lastTime = glfwGetTime();
-    int nbFrames = 0;
+		while (!glfwWindowShouldClose(window))
+		{
+			// ImGui prepare render (only if required)
+			if (show_imgui) {
+				ImGui_ImplOpenGL3_NewFrame();
+				ImGui_ImplGlfw_NewFrame();
+				ImGui::NewFrame();
+				//ImGui::ShowDemoWindow(); // Enable mouse when using Demo!
+				ImGui::SetNextWindowPos(ImVec2(10, 10));
+				ImGui::SetNextWindowSize(ImVec2(250, 100));
 
-    while (!glfwWindowShouldClose(window)) {
+				ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+				ImGui::Text("V-Sync: %s", is_vsync_on ? "ON" : "OFF");
+				ImGui::Text("FPS: %.1f", FPS);
+				ImGui::Text("(press RMB to release mouse)");
+				ImGui::Text("(hit D to show/hide info)");
+				ImGui::End();
+			}
 
-        // -------------------------
-        // FPS COUNTER
-        // -------------------------
-        double currentTime = glfwGetTime();
-        nbFrames++;
+			//
+			// UPDATE: recompute objects state, players position etc.
+		//
+		now = glfwGetTime();
+		// Time-based color animation
+		float tri_r = (float)sin(now) * 0.5f + 0.5f;
+		float tri_g = (float)cos(now) * 0.5f + 0.5f;
+		float tri_b = (float)sin(now * 0.5f) * 0.5f + 0.5f;
 
-        if (currentTime - lastTime >= 1.0) {
-            double fps = double(nbFrames) / (currentTime - lastTime);
+		//
+		// RENDER: GL drawCalls
+		//
 
-            std::string title = "OpenGL context - FPS: " +
-                    std::to_string(int(fps)) +
-                    " - VSync: " +
-                    (vsync_enabled ? "ON" : "OFF");
-            glfwSetWindowTitle(window, title.c_str());
-            nbFrames = 0;
-            lastTime = currentTime;
-        }
+		// Clear OpenGL canvas, both color buffer and Z-buffer
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // -------------------------
-        // TIME-BASED COLOR (Task 3)
-        // -------------------------
-        tri_r = (float)sin(currentTime) * 0.5f + 0.5f;
-        tri_g = (float)cos(currentTime) * 0.5f + 0.5f;
-        tri_b = (float)sin(currentTime * 0.5f) * 0.5f + 0.5f;
+		// Set triangle color and draw
+		glUniform4f(uniform_color_location, tri_r, tri_g, tri_b, 1.0f);
+		glBindVertexArray(VAO_ID);
+		glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(triangle_vertices.size()));
+			// ImGui display
+			if (show_imgui) {
+				ImGui::Render();
+				ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+			}
 
-        // -------------------------
-        // RENDER
-        // -------------------------
-        glClearColor(bg_r, bg_g, bg_b, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			// SWAP + VSYNC
+			glfwSwapBuffers(window);
 
-        glUniform4f(uniform_color_location, tri_r, tri_g, tri_b, 1.0f);
+			// POLL events
+			glfwPollEvents();
 
-        glBindVertexArray(VAO_ID);
-        glDrawArrays(GL_TRIANGLES, 0,
-                     static_cast<GLsizei>(triangle_vertices.size()));
+			// Time/FPS measurement
+			now = glfwGetTime();
+			previous_frame_render_time = now - frame_begin_timepoint; //compute delta_t
+			frame_begin_timepoint = now; // set new start
 
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-    }
+			fps_counter_frames++;
+			if (now - fps_last_displayed >= 1) {
+				FPS = fps_counter_frames / (now - fps_last_displayed);
+				fps_last_displayed = now;
+				fps_counter_frames = 0;
+				std::cout << "\r[FPS]" << FPS << "     "; // Compare: FPS with/without ImGUI
+			}
+		}
+	}
+	catch (std::exception const& e) {
+		std::cerr << "App failed : " << e.what() << std::endl;
+		return EXIT_FAILURE;
+	}
 
-    glfwDestroyWindow(window);
-    glfwTerminate();
-
-    return EXIT_SUCCESS;
+	return EXIT_SUCCESS;
 }
 
+void App::destroy(void)
+{
+	// clean up ImGUI
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
+
+	// clean up OpenCV
+	cv::destroyAllWindows();
+
+	// clean-up GLFW
+	if (window) {
+		glfwDestroyWindow(window);
+		window = nullptr;
+	}
+	glfwTerminate();
+}
 
 App::~App()
 {
-    // clean-up
-    cv::destroyAllWindows();
-    std::cout << "Bye...\n";
+	destroy();
+
+	std::cout << "Bye...\n";
 }
 
 // ----------------------------------------------------------------------------
 // CALLBACKS IMPLEMENTATION
 // ----------------------------------------------------------------------------
 
-void App::key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    App* app = static_cast<App*>(glfwGetWindowUserPointer(window));
+void App::key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+	auto this_inst = static_cast<App*>(glfwGetWindowUserPointer(window));
+	if ((action == GLFW_PRESS) || (action == GLFW_REPEAT)) {
+		switch (key) {
+		case GLFW_KEY_ESCAPE:
+			// Exit The App
+			glfwSetWindowShouldClose(window, GLFW_TRUE);
+			break;
+		case GLFW_KEY_C:
+			// Task 3: Background color change
+			this_inst->bg_r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+			this_inst->bg_g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+			this_inst->bg_b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+			break;
+		case GLFW_KEY_V:
+			this_inst->vsync_enabled = !this_inst->vsync_enabled;
+			glfwSwapInterval(this_inst->vsync_enabled ? 1 : 0);
+			std::cout << "VSync: " << (this_inst->vsync_enabled ? "ON" : "OFF") << "\n";
+			break;
+		case GLFW_KEY_F:
+			this_inst->toggle_fullscreen();
+			break;
+		case GLFW_KEY_D:
+			// Toggle ImGUI display
+			this_inst->show_imgui = !this_inst->show_imgui;
+			break;
+		case GLFW_KEY_TAB:
+			// Task 1.2: capture/release mouse
+			{
+				int mode = glfwGetInputMode(window, GLFW_CURSOR);
+				if (mode == GLFW_CURSOR_DISABLED)
+					glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+				else
+					glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			}
+			break;
+		default:
+			break;
+		}
+	}
+}
 
-    if ((action == GLFW_PRESS) || (action == GLFW_REPEAT)) {
-        switch (key) {
-        case GLFW_KEY_ESCAPE:
-            glfwSetWindowShouldClose(window, GLFW_TRUE);
-            break;
-        case GLFW_KEY_C:
-            // Task 3: Background color change
-            app->bg_r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-            app->bg_g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-            app->bg_b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-            break;
-        case GLFW_KEY_V:
-            app->vsync_enabled = !app->vsync_enabled;
-
-            if (app->vsync_enabled) {
-                glfwSwapInterval(1);   // Enable VSync
-            } else {
-                glfwSwapInterval(0);   // Disable VSync
-            }
-            break;
-        case GLFW_KEY_F:
-            app->toggle_fullscreen();
-            break;
-
-        default:
-            break;
-        }
-    }
 }
 
 void App::fbsize_callback(GLFWwindow* window, int width, int height) {
@@ -380,8 +556,28 @@ void App::fbsize_callback(GLFWwindow* window, int width, int height) {
 }
 
 void App::mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
-    if (action == GLFW_PRESS)
-        std::cout << "Mouse button pressed: " << button << std::endl;
+if (action == GLFW_PRESS) {
+		switch (button) {
+		case GLFW_MOUSE_BUTTON_LEFT: {
+			int mode = glfwGetInputMode(window, GLFW_CURSOR);
+			if (mode == GLFW_CURSOR_NORMAL) {
+				// we are outside of application, catch the cursor
+				glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			}
+			else {
+				// we are already inside our game: shoot, click, etc.
+				std::cout << "Bang!\n";
+			}
+			break;
+		}
+		case GLFW_MOUSE_BUTTON_RIGHT:
+            // release the cursor
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			break;
+		default:
+			break;
+		}
+	}
 }
 
 void App::cursor_position_callback(GLFWwindow* window, double xpos, double ypos) {
