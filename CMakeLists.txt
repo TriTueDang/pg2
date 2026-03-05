@@ -31,6 +31,10 @@ set(PROJECT_SOURCES
     assets.hpp
     app.cpp
     app.hpp
+    ShaderProgram.cpp
+    ShaderProgram.hpp
+    non_copyable.hpp
+
 
 )
 
