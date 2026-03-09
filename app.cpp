@@ -130,6 +130,7 @@ bool App::init() {
         glViewport(0, 0, width, height);
 
         glEnable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE); // Ensure triangle is visible from both sides
 
         // -------------------------
         // PRINT INFO
@@ -311,65 +312,8 @@ void App::print_glm_info()
 }
 
 void App::init_assets(void) {
-    //
-    // Initialize pipeline: compile, link and use shaders
-    //
-
-    //SHADERS - define & compile & link
-    const char* vertex_shader =
-        "#version 460 core\n"
-        "in vec3 attribute_Position;"
-        "void main() {"
-        "  gl_Position = vec4(attribute_Position, 1.0);"
-        "}";
-
-    const char* fragment_shader =
-        "#version 460 core\n"
-        "uniform vec4 uniform_Color;"
-        "out vec4 FragColor;"
-        "void main() {"
-        "  FragColor = uniform_Color;"
-        "}";
-
-    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vs, 1, &vertex_shader, NULL);
-    glCompileShader(vs);
-
-    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fs, 1, &fragment_shader, NULL);
-    glCompileShader(fs);
-
-    shader_prog_ID = glCreateProgram();
-    glAttachShader(shader_prog_ID, fs);
-    glAttachShader(shader_prog_ID, vs);
-    glLinkProgram(shader_prog_ID);
-
-    //now we can delete shader parts (they can be reused, if you have more shaders)
-    //the final shader program already linked and stored separately
-    glDetachShader(shader_prog_ID, fs);
-    glDetachShader(shader_prog_ID, vs);
-    glDeleteShader(vs);
-    glDeleteShader(fs);
-
-    //
-    // Create and load data into GPU using OpenGL DSA (Direct State Access)
-    //
-    vertex v;
-    // Create VAO + data description (similar to container)
-    glCreateVertexArrays(1, &VAO_ID);
-
-    GLint position_attrib_location = glGetAttribLocation(shader_prog_ID, "attribute_Position");
-
-    glEnableVertexArrayAttrib(VAO_ID, position_attrib_location);
-    glVertexArrayAttribFormat(VAO_ID, position_attrib_location, v.position.length(), GL_FLOAT, GL_FALSE, offsetof(vertex, position));
-    glVertexArrayAttribBinding(VAO_ID, position_attrib_location, 0); // (GLuint vaobj, GLuint attribindex, GLuint bindingindex)
-
-    // Create and fill data
-    glCreateBuffers(1, &VBO_ID);
-    glNamedBufferData(VBO_ID, triangle_vertices.size()*sizeof(vertex), triangle_vertices.data(), GL_STATIC_DRAW);
-
-    // Connect together
-    glVertexArrayVertexBuffer(VAO_ID, 0, VBO_ID, 0, sizeof(vertex)); // (GLuint vaobj, GLuint bindingindex, GLuint buffer, GLintptr offset, GLsizei stride)
+    shader_prog = ShaderProgram::from_files("shader.vert", "shader.frag");
+    model = std::make_shared<Model>("triangle.obj", shader_prog);
 }
 
 int App::run(void)
@@ -389,10 +333,7 @@ int App::run(void)
 	*/
 	try {
 		// Setup shader program and get uniform location
-		glUseProgram(shader_prog_ID);
-		GLint uniform_color_location = glGetUniformLocation(shader_prog_ID, "uniform_Color");
-		if (uniform_color_location == -1)
-			std::cerr << "Uniform 'uniform_Color' not found.\n";
+		shader_prog->use();
 
 		double now = glfwGetTime();
 		// FPS related
@@ -404,7 +345,7 @@ int App::run(void)
 		double frame_begin_timepoint = now;
 		double previous_frame_render_time{};
 
-		// Clear color saved to OpenGL state machine: no need to set repeatedly in game loop
+		// Clear color saved to OpenGL state machine
 		glClearColor(0, 0, 0, 0);
 
 		while (!glfwWindowShouldClose(window))
@@ -443,9 +384,12 @@ int App::run(void)
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		// Set triangle color and draw
-		glUniform4f(uniform_color_location, tri_r, tri_g, tri_b, 1.0f);
-		glBindVertexArray(VAO_ID);
-		glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(triangle_vertices.size()));
+		shader_prog->setUniform("color", glm::vec4(tri_r, tri_g, tri_b, 1.0f));
+		if (model->meshes.empty()) {
+            static bool once = true;
+            if (once) { std::cerr << "WARNING: Model has no meshes!\n"; once = false; }
+        }
+		model->draw();
 			// ImGui display
 			if (show_imgui) {
 				ImGui::Render();
@@ -483,9 +427,11 @@ int App::run(void)
 void App::destroy(void)
 {
 	// clean up ImGUI
-	ImGui_ImplOpenGL3_Shutdown();
-	ImGui_ImplGlfw_Shutdown();
-	ImGui::DestroyContext();
+    if (ImGui::GetCurrentContext()) {
+	    ImGui_ImplOpenGL3_Shutdown();
+	    ImGui_ImplGlfw_Shutdown();
+	    ImGui::DestroyContext();
+    }
 
 	// clean up OpenCV
 	cv::destroyAllWindows();

@@ -13,6 +13,9 @@
 
 // Project headers
 #include "assets.hpp"     // vertex definition, assets management
+#include "ShaderProgram.hpp"
+#include "Model.hpp"
+#include <memory>
 
 class App {
 private:
@@ -33,16 +36,8 @@ private:
 
     GLFWwindow* window = nullptr;
 
-    GLuint shader_prog_ID{ 0 };
-    GLuint VBO_ID{ 0 };
-    GLuint VAO_ID{ 0 };
-
-    std::vector<vertex> triangle_vertices =
-    {
-    	{{0.0f,  0.5f,  0.0f}},
-    	{{0.5f, -0.5f,  0.0f}},
-    	{{-0.5f, -0.5f,  0.0f}}
-    };
+    std::shared_ptr<ShaderProgram> shader_prog;
+    std::shared_ptr<Model> model;
 
     // Application state
     float bg_r = 0.1f, bg_g = 0.1f, bg_b = 0.15f;
