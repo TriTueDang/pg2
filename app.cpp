@@ -125,9 +125,10 @@ bool App::init() {
         // -------------------------
         // VIEWPORT + BASIC STATE
         // -------------------------
-        int width, height;
         glfwGetFramebufferSize(window, &width, &height);
+        update_projection_matrix();
         glViewport(0, 0, width, height);
+
 
         glEnable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE); // Ensure triangle is visible from both sides
@@ -316,6 +317,8 @@ void App::init_assets(void) {
     model = std::make_shared<Model>("cube_triangles.obj", shader_prog);
 }
 
+
+
 int App::run(void)
 {
 	/*
@@ -371,8 +374,19 @@ int App::run(void)
 
 			//
 			// UPDATE: recompute objects state, players position etc.
-		//
-		now = glfwGetTime();
+			//
+			now = glfwGetTime();
+			float deltaTime = static_cast<float>(now - frame_begin_timepoint);
+			frame_begin_timepoint = now;
+
+			// Task 2, point 2 & 4: View matrix reflecting mouse look (static position)
+			view_matrix = glm::lookAt(glm::vec3(3.0f, 3.0f, 3.0f), glm::vec3(3.0f, 3.0f, 3.0f) + camera_front, glm::vec3(0.0f, 1.0f, 0.0f));
+
+			// Task 2, point 1: optional object movement using time
+			model->pivot_position.x = sin(now) * 2.0f;
+
+
+
 		// Time-based color animation
 		float tri_r = (float)sin(now) * 0.5f + 0.5f;
 		float tri_g = (float)cos(now) * 0.5f + 0.5f;
@@ -387,11 +401,17 @@ int App::run(void)
 
 		// Set triangle color and draw
 		shader_prog->setUniform("color", glm::vec4(tri_r, tri_g, tri_b, 1.0f));
+		
+		// Set View and Projection matrices (Task 2, points 2 & 3)
+		shader_prog->setUniform("uV_m", view_matrix);
+		shader_prog->setUniform("uP_m", projection_matrix);
+
 		if (model->meshes.empty()) {
             static bool once = true;
             if (once) { std::cerr << "WARNING: Model has no meshes!\n"; once = false; }
         }
 		model->draw();
+
 			// ImGui display
 			if (show_imgui) {
 				ImGui::Render();
@@ -405,10 +425,6 @@ int App::run(void)
 			glfwPollEvents();
 
 			// Time/FPS measurement
-			now = glfwGetTime();
-			previous_frame_render_time = now - frame_begin_timepoint; //compute delta_t
-			frame_begin_timepoint = now; // set new start
-
 			fps_counter_frames++;
 			if (now - fps_last_displayed >= 1.0) {
 				FPS = fps_counter_frames / (now - fps_last_displayed);
@@ -418,6 +434,7 @@ int App::run(void)
 			}
 		}
 	}
+
 	catch (std::exception const& e) {
 		std::cerr << "App failed : " << e.what() << std::endl;
 		return EXIT_FAILURE;
@@ -490,10 +507,11 @@ void App::glfw_key_callback(GLFWwindow* window, int key, int scancode, int actio
 		case GLFW_KEY_F:
 			this_inst->toggle_fullscreen();
 			break;
-		case GLFW_KEY_D:
+		case GLFW_KEY_G:
 			// Toggle ImGUI display
 			this_inst->show_imgui = !this_inst->show_imgui;
 			break;
+
 		case GLFW_KEY_TAB:
 			// Task 1.2: capture/release mouse
 			{
@@ -548,9 +566,49 @@ if (action == GLFW_PRESS) {
 	}
 }
 
-void App::glfw_cursor_position_callback(GLFWwindow* window, double xpos, double ypos) {
-    // Optional: Log or use for interaction
+void App::glfw_cursor_position_callback(GLFWwindow* window, double xposIn, double yposIn) {
+	auto this_inst = static_cast<App*>(glfwGetWindowUserPointer(window));
+	
+	// Only move camera if cursor is disabled (Task 2, point 4)
+	if (glfwGetInputMode(window, GLFW_CURSOR) != GLFW_CURSOR_DISABLED)
+		return;
+
+	float xpos = static_cast<float>(xposIn);
+	float ypos = static_cast<float>(yposIn);
+
+	if (this_inst->firstMouse) {
+		this_inst->lastX = xpos;
+		this_inst->lastY = ypos;
+		this_inst->firstMouse = false;
+	}
+
+	float xoffset = xpos - this_inst->lastX;
+	float yoffset = this_inst->lastY - ypos; // reversed since y-coordinates go from bottom to top
+	this_inst->lastX = xpos;
+	this_inst->lastY = ypos;
+
+	float sensitivity = 0.1f;
+	xoffset *= sensitivity;
+	yoffset *= sensitivity;
+
+	this_inst->yaw += xoffset;
+	this_inst->pitch += yoffset;
+
+	// make sure that when pitch is out of bounds, screen doesn't get flipped
+	if (this_inst->pitch > 89.0f)
+		this_inst->pitch = 89.0f;
+	if (this_inst->pitch < -89.0f)
+		this_inst->pitch = -89.0f;
+
+	glm::vec3 front;
+	front.x = cos(glm::radians(this_inst->yaw)) * cos(glm::radians(this_inst->pitch));
+	front.y = sin(glm::radians(this_inst->pitch));
+	front.z = sin(glm::radians(this_inst->yaw)) * cos(glm::radians(this_inst->pitch));
+	this_inst->camera_front = glm::normalize(front);
 }
+
+
+
 
 void App::glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
     // if (yoffset > 0.0) {
