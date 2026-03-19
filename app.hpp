@@ -28,6 +28,18 @@ protected:
     // all objects of the scene
     std::unordered_map<std::string, Model> scene;
 
+    // Mouse control (Task 2, point 4)
+    glm::vec3 camera_front{ 0.0f, 0.0f, -1.0f };
+    float yaw = -90.0f;
+    float pitch = 0.0f;
+    float lastX = 400, lastY = 300;
+    bool firstMouse = true;
+
+    glm::mat4 view_matrix = glm::identity<glm::mat4>();
+
+
+
+
 private:
     bool show_imgui{true};
 

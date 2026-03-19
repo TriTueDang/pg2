@@ -1,10 +1,12 @@
 #version 460 core
+layout (location = 0) in vec3 aPos;
 
-layout (location = 0) in vec3 position;
-layout (location = 1) in vec3 normal;
-layout (location = 2) in vec2 texture_coords;
+// Tyto uniformy budeme plnit z C++ kódu
+uniform mat4 uM_m = mat4(1.0); // Model
+uniform mat4 uV_m = mat4(1.0); // View
+uniform mat4 uP_m = mat4(1.0); // Projection
 
-void main()
-{
-    gl_Position = vec4(position, 1.0);
+void main() {
+    // VÝPOČET: Matice násobíme zleva (P * V * M)
+    gl_Position = uP_m * uV_m * uM_m * vec4(aPos, 1.0f);
 }

@@ -6,13 +6,21 @@
 #include <memory> 
 
 #include <GL/glew.h>
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp> 
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/euler_angles.hpp>
 
 #include "assets.hpp"
 #include "Mesh.hpp"
 #include "ShaderProgram.hpp"
 #include "OBJloader.hpp"
 
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/euler_angles.hpp>
+
+
+#include <glm/gtc/matrix_transform.hpp>
 class Model {
 public:
     // origin point of whole model
@@ -58,10 +66,27 @@ public:
     }
     
     void draw() {
+        // Calculate base model matrix for the whole model
+        glm::mat4 T = glm::translate(glm::mat4(1.0f), pivot_position);
+        glm::mat4 R = glm::yawPitchRoll(glm::radians(eulerAngles.y), glm::radians(eulerAngles.x), glm::radians(eulerAngles.z));
+        glm::mat4 S = glm::scale(glm::mat4(1.0f), scale);
+        glm::mat4 model_matrix = T * R * S;
+
         // call draw() on mesh (all meshes)
         for (auto const& mesh_pkg : meshes) {
             mesh_pkg.shader->use(); // select proper shader
+            
+            // Calculate mesh-local transformation
+            glm::mat4 mT = glm::translate(glm::mat4(1.0f), mesh_pkg.origin);
+            glm::mat4 mR = glm::yawPitchRoll(glm::radians(mesh_pkg.eulerAngles.y), glm::radians(mesh_pkg.eulerAngles.x), glm::radians(mesh_pkg.eulerAngles.z));
+            glm::mat4 mS = glm::scale(glm::mat4(1.0f), mesh_pkg.scale);
+            glm::mat4 mesh_local_matrix = mT * mR * mS;
+
+            // Set final model matrix uniform
+            mesh_pkg.shader->setUniform("uM_m", model_matrix * mesh_local_matrix);
+
             mesh_pkg.mesh->draw();   // draw mesh
         }
     }
+
 };
