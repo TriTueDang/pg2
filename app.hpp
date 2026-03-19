@@ -17,6 +17,7 @@
 #include "Model.hpp"
 #include <memory>
 
+#include "camera.hpp"
 class App {
 
 protected:
@@ -28,6 +29,10 @@ protected:
     // all objects of the scene
     std::unordered_map<std::string, Model> scene;
 
+    Camera camera;
+    // remember last cursor position, move relative to that in the next frame
+    double cursorLastX{ 0 };
+    double cursorLastY{ 0 };
 private:
     bool show_imgui{true};
 
@@ -81,6 +86,7 @@ public:
     static void glfw_cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
     static void glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
     void update_projection_matrix(void);
+
 
     void destroy(void);
     ~App();

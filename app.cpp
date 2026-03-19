@@ -316,114 +316,142 @@ void App::init_assets(void) {
     model = std::make_shared<Model>("cube_triangles.obj", shader_prog);
 }
 
+
 int App::run(void)
 {
-	/*
-	* Typical game loop:
-
-			// INIT: Initial positions and state
-			while (application_should_not_close)
-			{
-				// UPDATE: Update game state
-				// RENDER: Render content
-				// SWAP: Swap back/front buffer
-				// VSYNC: Wait for vertical retrace (e.g. 1/60 of a second)
-				// POLL: Poll events, dispatch
-			}
-	*/
-	try {
-		// Setup shader program and get uniform location
-		shader_prog->use();
-
-		double now = glfwGetTime();
-		// FPS related
-		double fps_last_displayed = now;
-		int fps_counter_frames = 0;
-		double FPS = 0.0;
-
-		// animation related
-		double frame_begin_timepoint = now;
-		double previous_frame_render_time{};
-
-		// Clear color saved to OpenGL state machine
-
-		glClearColor(0, 0, 0, 0);
-
-		glViewport(0, 0, width, height);
-		while (!glfwWindowShouldClose(window))
-		{
-			// ImGui prepare render (only if required)
-			if (show_imgui) {
-				ImGui_ImplOpenGL3_NewFrame();
-				ImGui_ImplGlfw_NewFrame();
-				ImGui::NewFrame();
-				//ImGui::ShowDemoWindow(); // Enable mouse when using Demo!
-				ImGui::SetNextWindowPos(ImVec2(10, 10));
-				ImGui::SetNextWindowSize(ImVec2(250, 100));
-
-				ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-				ImGui::Text("V-Sync: %s", is_vsync_on ? "ON" : "OFF");
-				ImGui::Text("FPS: %.1f", FPS);
-				ImGui::Text("(press RMB to release mouse)");
-				ImGui::Text("(hit D to show/hide info)");
-				ImGui::End();
-			}
-
-			//
-			// UPDATE: recompute objects state, players position etc.
-		//
-		now = glfwGetTime();
-		// Time-based color animation
-		float tri_r = (float)sin(now) * 0.5f + 0.5f;
-		float tri_g = (float)cos(now) * 0.5f + 0.5f;
-		float tri_b = (float)sin(now * 0.5f) * 0.5f + 0.5f;
-
-		//
-		// RENDER: GL drawCalls
-		//
-
-		// Clear OpenGL canvas, both color buffer and Z-buffer
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-		// Set triangle color and draw
-		shader_prog->setUniform("color", glm::vec4(tri_r, tri_g, tri_b, 1.0f));
-		if (model->meshes.empty()) {
-            static bool once = true;
-            if (once) { std::cerr << "WARNING: Model has no meshes!\n"; once = false; }
+    /*
+    * Typical game loop:
+        // INIT: Initial positions and state
+        while (application_should_not_close)
+        {
+          // UPDATE: Update game state
+          // RENDER: Render content
+          // SWAP: Swap back/front buffer
+          // VSYNC: Wait for vertical retrace (e.g. 1/60 of a second)
+          // POLL: Poll events, dispatch
         }
-		model->draw();
-			// ImGui display
-			if (show_imgui) {
-				ImGui::Render();
-				ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-			}
+    */
+    try {
+        // Setup shader program and get uniform location
+        shader_prog->use();
 
-			// SWAP + VSYNC
-			glfwSwapBuffers(window);
+        double now = glfwGetTime();
+        // FPS related
+        double fps_last_displayed = now;
+        int fps_counter_frames = 0;
+        double FPS = 0.0;
 
-			// POLL events
-			glfwPollEvents();
+        // animation related
+        double frame_begin_timepoint = now;
+        double previous_frame_render_time = 0.0; // This will act as our delta_t
 
-			// Time/FPS measurement
-			now = glfwGetTime();
-			previous_frame_render_time = now - frame_begin_timepoint; //compute delta_t
-			frame_begin_timepoint = now; // set new start
+        // Clear color saved to OpenGL state machine
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
-			fps_counter_frames++;
-			if (now - fps_last_displayed >= 1.0) {
-				FPS = fps_counter_frames / (now - fps_last_displayed);
-				fps_last_displayed = now;
-				fps_counter_frames = 0;
-				std::cout << "\r[FPS]" << FPS << "     "; // Compare: FPS with/without ImGUI
-			}
-		}
-	}
-	catch (std::exception const& e) {
-		std::cerr << "App failed : " << e.what() << std::endl;
-		return EXIT_FAILURE;
-	}
+        // --- NEW INIT CODE ---
+        glCullFace(GL_BACK);
+        glEnable(GL_CULL_FACE);
 
-	return EXIT_SUCCESS;
+        // disable cursor, so that it can not leave window, and we can process movement
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        // get first position of mouse cursor
+        glfwGetCursorPos(window, &cursorLastX, &cursorLastY);
+
+        update_projection_matrix();
+        glViewport(0, 0, width, height);
+
+        camera.Position = glm::vec3(0, 0, 1000); // Assuming the attribute is capitalized based on your previous Camera class
+        // ---------------------
+
+        while (!glfwWindowShouldClose(window))
+        {
+            // Clear OpenGL canvas, both color buffer and Z-buffer
+            // Moved this to the top of the loop where it belongs
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            // ImGui prepare render (only if required)
+            if (show_imgui) {
+                ImGui_ImplOpenGL3_NewFrame();
+                ImGui_ImplGlfw_NewFrame();
+                ImGui::NewFrame();
+                //ImGui::ShowDemoWindow(); // Enable mouse when using Demo!
+                ImGui::SetNextWindowPos(ImVec2(10, 10));
+                ImGui::SetNextWindowSize(ImVec2(250, 100));
+
+                ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+                ImGui::Text("V-Sync: %s", is_vsync_on ? "ON" : "OFF");
+                ImGui::Text("FPS: %.1f", FPS);
+                ImGui::Text("(press RMB to release mouse)");
+                ImGui::Text("(hit D to show/hide info)");
+                ImGui::End();
+            }
+
+            //
+            // UPDATE: recompute objects state, players position etc.
+            //
+            now = glfwGetTime();
+
+            // --- NEW CAMERA UPDATE ---
+            // Process keys etc. using previous_frame_render_time as delta_t
+            camera.ProcessInput(window, (GLfloat)previous_frame_render_time);
+            // -------------------------
+
+            // Time-based color animation
+            float tri_r = (float)sin(now) * 0.5f + 0.5f;
+            float tri_g = (float)cos(now) * 0.5f + 0.5f;
+            float tri_b = (float)sin(now * 0.5f) * 0.5f + 0.5f;
+
+            //
+            // RENDER: GL drawCalls
+            //
+
+            // --- NEW MATRIX SHADER UNIFORMS ---
+            // create and set View Matrix according to camera settings
+            shader_prog->setUniform("uV_m", camera.GetViewMatrix());
+            shader_prog->setUniform("uP_m", projection_matrix); // Assuming projection_matrix is an accessible class member
+            // ----------------------------------
+
+            // Set triangle color and draw
+            shader_prog->setUniform("color", glm::vec4(tri_r, tri_g, tri_b, 1.0f));
+
+            if (model->meshes.empty()) {
+                static bool once = true;
+                if (once) { std::cerr << "WARNING: Model has no meshes!\n"; once = false; }
+            }
+            model->draw();
+
+            // ImGui display
+            if (show_imgui) {
+                ImGui::Render();
+                ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            }
+
+            // SWAP + VSYNC
+            glfwSwapBuffers(window);
+
+            // POLL events
+            glfwPollEvents();
+
+            // Time/FPS measurement
+            now = glfwGetTime();
+            previous_frame_render_time = now - frame_begin_timepoint; // compute delta_t for the NEXT frame
+            frame_begin_timepoint = now; // set new start
+
+            fps_counter_frames++;
+            if (now - fps_last_displayed >= 1.0) {
+                FPS = fps_counter_frames / (now - fps_last_displayed);
+                fps_last_displayed = now;
+                fps_counter_frames = 0;
+                std::cout << "\r[FPS]" << FPS << "     "; // Compare: FPS with/without ImGUI
+            }
+        }
+    }
+    catch (std::exception const& e) {
+        std::cerr << "App failed : " << e.what() << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
 }
 
 void App::destroy(void)
@@ -549,7 +577,11 @@ if (action == GLFW_PRESS) {
 }
 
 void App::glfw_cursor_position_callback(GLFWwindow* window, double xpos, double ypos) {
-    // Optional: Log or use for interaction
+    auto app = static_cast<App*>(glfwGetWindowUserPointer(window));
+
+    app->camera.ProcessMouseMovement(xpos - app->cursorLastX, (ypos - app->cursorLastY) * -1.0);
+    app->cursorLastX = xpos;
+    app->cursorLastY = ypos;
 }
 
 void App::glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
