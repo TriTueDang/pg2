@@ -38,10 +38,10 @@ protected:
 
     glm::mat4 view_matrix = glm::identity<glm::mat4>();
 
-    // Camera camera;
-    // // remember last cursor position, move relative to that in the next frame
-    // double cursorLastX{ 0 };
-    // double cursorLastY{ 0 };
+    Camera camera;
+    // remember last cursor position, move relative to that in the next frame
+    double cursorLastX{ 0 };
+    double cursorLastY{ 0 };
 
 
 private:
@@ -95,6 +95,7 @@ public:
     static void glfw_fbsize_callback(GLFWwindow* window, int width, int height);
     static void glfw_mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
     static void glfw_cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
+    static void cursorPositionCallback(GLFWwindow* window, double xpos, double ypos);
     static void glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
     void update_projection_matrix(void);
 
