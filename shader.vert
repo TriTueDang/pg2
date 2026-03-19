@@ -1,12 +1,13 @@
 #version 460 core
-layout (location = 0) in vec3 aPos;
+in vec3 aPos;
 
-// Tyto uniformy budeme plnit z C++ kódu
-uniform mat4 uM_m = mat4(1.0); // Model
-uniform mat4 uV_m = mat4(1.0); // View
-uniform mat4 uP_m = mat4(1.0); // Projection
+uniform mat4 uP_m = mat4(1.0);
+uniform mat4 uM_m = mat4(1.0);
+uniform mat4 uV_m = mat4(1.0);
 
-void main() {
-    // VÝPOČET: Matice násobíme zleva (P * V * M)
+void main()
+{
+    // Outputs the positions/coordinates of all vertices
     gl_Position = uP_m * uV_m * uM_m * vec4(aPos, 1.0f);
 }
+

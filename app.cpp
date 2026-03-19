@@ -250,7 +250,7 @@ void App::init_glfw(void)
 	glfwSetKeyCallback(window, glfw_key_callback);
 	glfwSetFramebufferSizeCallback(window, glfw_fbsize_callback);
 	glfwSetMouseButtonCallback(window, glfw_mouse_button_callback);
-	glfwSetCursorPosCallback(window, glfw_cursor_position_callback);
+	glfwSetCursorPosCallback(window, cursorPositionCallback);
 	glfwSetScrollCallback(window, glfw_scroll_callback);
 }
 
@@ -352,7 +352,21 @@ int App::run(void)
 
 		glClearColor(0, 0, 0, 0);
 
+		glCullFace(GL_BACK);
+		glDisable(GL_CULL_FACE); // Ujisti se, ze spatne natocene steny nam neschovaji model!
+
+		// disable cursor, so that it can not leave window, and we can process movement
+		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		// get first position of mouse cursor
+		glfwGetCursorPos(window, &cursorLastX, &cursorLastY);
+
+		update_projection_matrix();
 		glViewport(0, 0, width, height);
+
+		// Kamera byla hrozně daleko (1000 jednotek), krychle je moc malá. Nastavení na 5 zajistí, že bude vidět!
+		camera.Position = glm::vec3(0, 0, 5.0f);
+		double last_frame_time = glfwGetTime();
+
 		while (!glfwWindowShouldClose(window))
 		{
 			// ImGui prepare render (only if required)
@@ -376,41 +390,46 @@ int App::run(void)
 			// UPDATE: recompute objects state, players position etc.
 			//
 			now = glfwGetTime();
-			float deltaTime = static_cast<float>(now - frame_begin_timepoint);
-			frame_begin_timepoint = now;
+			float delta_t = static_cast<float>(now - last_frame_time);
+			last_frame_time = now;
 
-			// Task 2, point 2 & 4: View matrix reflecting mouse look (static position)
-			view_matrix = glm::lookAt(glm::vec3(3.0f, 3.0f, 3.0f), glm::vec3(3.0f, 3.0f, 3.0f) + camera_front, glm::vec3(0.0f, 1.0f, 0.0f));
+			//########## react to user  ##########
+			camera.ProcessInput(window, delta_t); // process keys etc.
 
-			// Task 2, point 1: optional object movement using time
-			model->pivot_position.x = sin(now) * 2.0f;
+			// Ať krychle nestojí na místě a jde vidět ze všech stran, necháme jí rotovat:
+			if (model) {
+				model->eulerAngles.y = now * 50.0f;
+				model->eulerAngles.x = now * 30.0f;
+			}
 
+			//
+			// RENDER: GL drawCalls
+			//
 
+			// Clear OpenGL canvas, both color buffer and Z-buffer
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		// Time-based color animation
-		float tri_r = (float)sin(now) * 0.5f + 0.5f;
-		float tri_g = (float)cos(now) * 0.5f + 0.5f;
-		float tri_b = (float)sin(now * 0.5f) * 0.5f + 0.5f;
+			// Time-based color animation
+			float tri_r = (float)sin(now) * 0.5f + 0.5f;
+			float tri_g = (float)cos(now) * 0.5f + 0.5f;
+			float tri_b = (float)sin(now * 0.5f) * 0.5f + 0.5f;
 
-		//
-		// RENDER: GL drawCalls
-		//
+			//########## create and set View Matrix according to camera settings  ##########
+			shader_prog->use(); // VZDY musitme aktivovat nas shader pred kreslenim, protoze ImGui (kreslene na konci smycky) prehazuje na svuj shader!
+			shader_prog->setUniform("uV_m", camera.GetViewMatrix());		
+			shader_prog->setUniform("uP_m", projection_matrix);		
+			shader_prog->setUniform("color", glm::vec4(tri_r, tri_g, tri_b, 1.0f));
 
-		// Clear OpenGL canvas, both color buffer and Z-buffer
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-		// Set triangle color and draw
-		shader_prog->setUniform("color", glm::vec4(tri_r, tri_g, tri_b, 1.0f));
-		
-		// Set View and Projection matrices (Task 2, points 2 & 3)
-		shader_prog->setUniform("uV_m", view_matrix);
-		shader_prog->setUniform("uP_m", projection_matrix);
-
-		if (model->meshes.empty()) {
-            static bool once = true;
-            if (once) { std::cerr << "WARNING: Model has no meshes!\n"; once = false; }
-        }
-		model->draw();
+			// draw all (pokud bys mel objekty v poli scene)
+			for (auto& [name, model_obj] : scene) {
+				model_obj.draw();
+			}
+			
+			// Ale protoze 'scene' je zatim prazdne (v init_assets nebylo nic pridano), 
+			// musime navic vykreslit primo nas nacteny model:
+			if (model) {
+				model->draw();
+			}
 
 			// ImGui display
 			if (show_imgui) {
@@ -564,6 +583,20 @@ if (action == GLFW_PRESS) {
 			break;
 		}
 	}
+}
+
+void App::cursorPositionCallback(GLFWwindow* window, double xpos, double ypos) {
+    auto app = static_cast<App*>(glfwGetWindowUserPointer(window));
+
+    if (app->firstMouse) {
+        app->cursorLastX = xpos;
+        app->cursorLastY = ypos;
+        app->firstMouse = false;
+    }
+
+    app->camera.ProcessMouseMovement(xpos - app->cursorLastX, (ypos - app->cursorLastY) * -1.0);
+    app->cursorLastX = xpos;
+    app->cursorLastY = ypos;
 }
 
 void App::glfw_cursor_position_callback(GLFWwindow* window, double xposIn, double yposIn) {
