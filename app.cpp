@@ -313,7 +313,7 @@ void App::print_glm_info()
 
 void App::init_assets(void) {
     shader_prog = ShaderProgram::from_files("shader.vert", "shader.frag");
-    model = std::make_shared<Model>("triangle.obj", shader_prog);
+    model = std::make_shared<Model>("cube_triangles.obj", shader_prog);
 }
 
 int App::run(void)
@@ -346,8 +346,10 @@ int App::run(void)
 		double previous_frame_render_time{};
 
 		// Clear color saved to OpenGL state machine
+
 		glClearColor(0, 0, 0, 0);
 
+		glViewport(0, 0, width, height);
 		while (!glfwWindowShouldClose(window))
 		{
 			// ImGui prepare render (only if required)
@@ -509,7 +511,16 @@ void App::glfw_key_callback(GLFWwindow* window, int key, int scancode, int actio
 }
 
 void App::glfw_fbsize_callback(GLFWwindow* window, int width, int height) {
+    // glViewport(0, 0, width, height);
+		auto this_inst = static_cast<App*>(glfwGetWindowUserPointer(window));
+    this_inst->width = width;
+    this_inst->height = height;
+
+    // set viewport
     glViewport(0, 0, width, height);
+    //now your canvas has [0,0] in bottom left corner, and its size is [width x height]
+
+    this_inst->update_projection_matrix();
 }
 
 void App::glfw_mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
@@ -542,11 +553,31 @@ void App::glfw_cursor_position_callback(GLFWwindow* window, double xpos, double 
 }
 
 void App::glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
-    if (yoffset > 0.0) {
-        std::cout << "wheel up...\n";
-    } else if (yoffset < 0.0) {
-        std::cout << "wheel down...\n";
-    }
+    // if (yoffset > 0.0) {
+    //     std::cout << "wheel up...\n";
+    // } else if (yoffset < 0.0) {
+    //     std::cout << "wheel down...\n";
+    // }
+		auto this_inst = static_cast<App*>(glfwGetWindowUserPointer(window));
+    this_inst->fov += 10*yoffset; // yoffset is mostly +1 or -1; one degree difference in fov is not visible
+    this_inst->fov = std::clamp(this_inst->fov, 20.0f, 170.0f); // limit FOV to reasonable values...
+
+    this_inst->update_projection_matrix();
+}
+
+void App::update_projection_matrix(void)
+{
+    if (height < 1)
+        height = 1;   // avoid division by 0
+
+    float ratio = static_cast<float>(width) / height;
+
+    projection_matrix = glm::perspective(
+        glm::radians(fov),   // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90° (extra wide) and 30° (quite zoomed in)
+        ratio,               // Aspect Ratio. Depends on the size of your window.
+        0.1f,                // Near clipping plane. Keep as big as possible, or you'll get precision issues.
+        20000.0f             // Far clipping plane. Keep as little as possible.
+    );
 }
 
 void App::toggle_fullscreen() {

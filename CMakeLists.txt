@@ -33,6 +33,7 @@ set(PROJECT_SOURCES
     app.hpp
     ShaderProgram.cpp
     OBJloader.cpp
+    Model.hpp
 )
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})

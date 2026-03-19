@@ -18,6 +18,16 @@
 #include <memory>
 
 class App {
+
+protected:
+    // projection related variables
+    int width{0}, height{0};
+    float fov = 60.0f;
+    // store projection matrix here, update only on callbacks
+    glm::mat4 projection_matrix = glm::identity<glm::mat4>();
+    // all objects of the scene
+    std::unordered_map<std::string, Model> scene;
+
 private:
     bool show_imgui{true};
 
@@ -70,6 +80,7 @@ public:
     static void glfw_mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
     static void glfw_cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
     static void glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+    void update_projection_matrix(void);
 
     void destroy(void);
     ~App();
