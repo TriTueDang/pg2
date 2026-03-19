@@ -17,6 +17,7 @@
 #include "Model.hpp"
 #include <memory>
 
+#include "camera.hpp"
 class App {
 
 protected:
@@ -37,7 +38,10 @@ protected:
 
     glm::mat4 view_matrix = glm::identity<glm::mat4>();
 
-
+    // Camera camera;
+    // // remember last cursor position, move relative to that in the next frame
+    // double cursorLastX{ 0 };
+    // double cursorLastY{ 0 };
 
 
 private:
