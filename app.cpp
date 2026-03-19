@@ -396,6 +396,12 @@ int App::run(void)
 			//########## react to user  ##########
 			camera.ProcessInput(window, delta_t); // process keys etc.
 
+			// Ať krychle nestojí na místě a jde vidět ze všech stran, necháme jí rotovat:
+			if (model) {
+				model->eulerAngles.y = now * 50.0f;
+				model->eulerAngles.x = now * 30.0f;
+			}
+
 			//
 			// RENDER: GL drawCalls
 			//
@@ -403,10 +409,16 @@ int App::run(void)
 			// Clear OpenGL canvas, both color buffer and Z-buffer
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+			// Time-based color animation
+			float tri_r = (float)sin(now) * 0.5f + 0.5f;
+			float tri_g = (float)cos(now) * 0.5f + 0.5f;
+			float tri_b = (float)sin(now * 0.5f) * 0.5f + 0.5f;
+
 			//########## create and set View Matrix according to camera settings  ##########
 			shader_prog->use(); // VZDY musitme aktivovat nas shader pred kreslenim, protoze ImGui (kreslene na konci smycky) prehazuje na svuj shader!
 			shader_prog->setUniform("uV_m", camera.GetViewMatrix());		
 			shader_prog->setUniform("uP_m", projection_matrix);		
+			shader_prog->setUniform("color", glm::vec4(tri_r, tri_g, tri_b, 1.0f));
 
 			// draw all (pokud bys mel objekty v poli scene)
 			for (auto& [name, model_obj] : scene) {
