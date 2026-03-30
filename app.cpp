@@ -35,6 +35,7 @@
 // Assets and project-specific headers
 #include "assets.hpp"
 #include "app.hpp"
+#include "Texture.hpp"
 
 // ImGUI: immediate-mode GUI for debug interfaces
 #include <imgui.h>               // core
@@ -314,7 +315,11 @@ void App::print_glm_info()
 
 void App::init_assets(void) {
     shader_prog = ShaderProgram::from_files("shader.vert", "shader.frag");
-    model = std::make_shared<Model>("cube_triangles.obj", shader_prog);
+    auto texture = std::make_shared<Texture>("07lab - tex-20260327T070642Z-3-001/07lab - tex/00 textures - resources/textures/box.png");
+    model = std::make_shared<Model>("triangle.obj", shader_prog, texture);
+    
+    shader_prog->use();
+    shader_prog->setUniform("uTexture", 0);
 }
 
 
@@ -398,8 +403,8 @@ int App::run(void)
 
 			// Ať krychle nestojí na místě a jde vidět ze všech stran, necháme jí rotovat:
 			if (model) {
-				model->eulerAngles.y = now * 50.0f;
-				model->eulerAngles.x = now * 30.0f;
+				// model->eulerAngles.y = now * 50.0f;
+				// model->eulerAngles.x = now * 30.0f;
 			}
 
 			//
@@ -418,7 +423,7 @@ int App::run(void)
 			shader_prog->use(); // VZDY musitme aktivovat nas shader pred kreslenim, protoze ImGui (kreslene na konci smycky) prehazuje na svuj shader!
 			shader_prog->setUniform("uV_m", camera.GetViewMatrix());		
 			shader_prog->setUniform("uP_m", projection_matrix);		
-			shader_prog->setUniform("color", glm::vec4(tri_r, tri_g, tri_b, 1.0f));
+			// shader_prog->setUniform("color", glm::vec4(tri_r, tri_g, tri_b, 1.0f));
 
 			// draw all (pokud bys mel objekty v poli scene)
 			for (auto& [name, model_obj] : scene) {
