@@ -58,7 +58,10 @@ private:
     int saved_window_width = 800;
     int saved_window_height = 600;
 
+    bool is_multisample_on = true;
+
     void toggle_fullscreen();
+    void take_screenshot();
 
     GLFWwindow* window = nullptr;
 

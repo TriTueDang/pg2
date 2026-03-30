@@ -9,6 +9,8 @@
 #include <stack>      // example container (unused?)
 #include <random>     // random numbers
 #include <string>     // std::string used in window title
+#include <sstream>
+#include <iomanip>
 
 // --- Third-party libraries ---------------------------------------------------
 
@@ -132,6 +134,7 @@ bool App::init() {
 
         glEnable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE); // Ensure triangle is visible from both sides
+        glEnable(GL_MULTISAMPLE); // Task 1: Enable multisampling by default
 
         // -------------------------
         // PRINT INFO
@@ -226,6 +229,8 @@ void App::init_glfw(void)
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
+
+	glfwWindowHint(GLFW_SAMPLES, 4); // Task 1: set MSAA level to 4
 
 	// Task 1.3: hide window during initialization
 	glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
@@ -376,13 +381,16 @@ int App::run(void)
 				ImGui::NewFrame();
 				//ImGui::ShowDemoWindow(); // Enable mouse when using Demo!
 				ImGui::SetNextWindowPos(ImVec2(10, 10));
-				ImGui::SetNextWindowSize(ImVec2(250, 100));
+				ImGui::SetNextWindowSize(ImVec2(300, 150));
 
 				ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-				ImGui::Text("V-Sync: %s", is_vsync_on ? "ON" : "OFF");
 				ImGui::Text("FPS: %.1f", FPS);
+				ImGui::Text("V-Sync: %s (hit V to toggle)", is_vsync_on ? "ON" : "OFF");
+				ImGui::Text("Multisample (AA): %s (hit M to toggle)", is_multisample_on ? "ON" : "OFF");
+				// ImGui::Text("Background color: (hit C to change)");
+				ImGui::Text("(hit P for Screenshot)");
 				ImGui::Text("(press RMB to release mouse)");
-				ImGui::Text("(hit D to show/hide info)");
+				ImGui::Text("(hit G to show/hide info)");
 				ImGui::End();
 			}
 
@@ -416,16 +424,16 @@ int App::run(void)
 
 			//########## create and set View Matrix according to camera settings  ##########
 			shader_prog->use(); // VZDY musitme aktivovat nas shader pred kreslenim, protoze ImGui (kreslene na konci smycky) prehazuje na svuj shader!
-			shader_prog->setUniform("uV_m", camera.GetViewMatrix());		
-			shader_prog->setUniform("uP_m", projection_matrix);		
+			shader_prog->setUniform("uV_m", camera.GetViewMatrix());
+			shader_prog->setUniform("uP_m", projection_matrix);
 			shader_prog->setUniform("color", glm::vec4(tri_r, tri_g, tri_b, 1.0f));
 
 			// draw all (pokud bys mel objekty v poli scene)
 			for (auto& [name, model_obj] : scene) {
 				model_obj.draw();
 			}
-			
-			// Ale protoze 'scene' je zatim prazdne (v init_assets nebylo nic pridano), 
+
+			// Ale protoze 'scene' je zatim prazdne (v init_assets nebylo nic pridano),
 			// musime navic vykreslit primo nas nacteny model:
 			if (model) {
 				model->draw();
@@ -530,6 +538,17 @@ void App::glfw_key_callback(GLFWwindow* window, int key, int scancode, int actio
 			// Toggle ImGUI display
 			this_inst->show_imgui = !this_inst->show_imgui;
 			break;
+		case GLFW_KEY_M:
+			// Task 1: Toggle Multisampling
+			this_inst->is_multisample_on = !this_inst->is_multisample_on;
+			if (this_inst->is_multisample_on) glEnable(GL_MULTISAMPLE);
+			else glDisable(GL_MULTISAMPLE);
+			std::cout << "Multisampling: " << (this_inst->is_multisample_on ? "ON" : "OFF") << "\n";
+			break;
+		case GLFW_KEY_P:
+			// Task 2: Take Screenshot
+			this_inst->take_screenshot();
+			break;
 
 		case GLFW_KEY_TAB:
 			// Task 1.2: capture/release mouse
@@ -601,7 +620,7 @@ void App::cursorPositionCallback(GLFWwindow* window, double xpos, double ypos) {
 
 void App::glfw_cursor_position_callback(GLFWwindow* window, double xposIn, double yposIn) {
 	auto this_inst = static_cast<App*>(glfwGetWindowUserPointer(window));
-	
+
 	// Only move camera if cursor is disabled (Task 2, point 4)
 	if (glfwGetInputMode(window, GLFW_CURSOR) != GLFW_CURSOR_DISABLED)
 		return;
@@ -711,4 +730,35 @@ void App::toggle_fullscreen() {
         glfwSetWindowMonitor(window, nullptr, saved_window_x, saved_window_y, saved_window_width, saved_window_height, 0);
         fullscreen_enabled = false;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Screenshot logic
+// ---------------------------------------------------------------------------
+void App::take_screenshot() {
+	// Generate unique filename
+	auto now = std::chrono::system_clock::now();
+	auto time_t_now = std::chrono::system_clock::to_time_t(now);
+	std::stringstream ss;
+	ss << "screenshot_" << std::put_time(std::localtime(&time_t_now), "%Y%m%d_%H%M%S")
+	   << (is_multisample_on ? "_aa" : "_noaa") << ".png";
+	std::string filename = ss.str();
+
+	// Allocate OpenCV matrix
+	cv::Mat img(height, width, CV_8UC3);
+
+	// Read pixels from GL FRONT buffer or back buffer.
+	// Make sure we are aligned to 1 byte
+	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	glReadPixels(0, 0, width, height, GL_BGR, GL_UNSIGNED_BYTE, img.data);
+
+	// OpenGL origin is bottom-left, OpenCV is top-left
+	cv::flip(img, img, 0);
+
+	// Write to file
+	if (cv::imwrite(filename, img)) {
+		std::cout << "Screenshot saved to: " << filename << std::endl;
+	} else {
+		std::cerr << "Failed to save screenshot: " << filename << std::endl;
+	}
 }
