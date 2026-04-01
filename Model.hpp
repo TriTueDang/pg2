@@ -15,12 +15,8 @@
 #include "Mesh.hpp"
 #include "ShaderProgram.hpp"
 #include "OBJloader.hpp"
+#include "Texture.hpp"
 
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtx/euler_angles.hpp>
-
-
-#include <glm/gtc/matrix_transform.hpp>
 class Model {
 public:
     // origin point of whole model
@@ -30,25 +26,26 @@ public:
 
     // mesh related data
     struct mesh_package {
-        std::shared_ptr<Mesh> mesh;         // geometry & topology, vertex attributes
-        std::shared_ptr<ShaderProgram> shader;     // which shader to use to draw this part of the model
-        
-        glm::vec3 origin;                   // mesh origin relative to origin of the whole model
-        glm::vec3 eulerAngles;              // mesh rotation relative to orientation of the whole model
-        glm::vec3 scale;                    // mesh scale relative to scale of the whole model
+        std::shared_ptr<Mesh> mesh;
+        std::shared_ptr<ShaderProgram> shader;
+        glm::vec3 origin;
+        glm::vec3 eulerAngles;
+        glm::vec3 scale;
+        std::shared_ptr<Texture> texture;
 
-        mesh_package(std::shared_ptr<Mesh> m, std::shared_ptr<ShaderProgram> s, glm::vec3 o, glm::vec3 e, glm::vec3 sc)
-            : mesh(m), shader(s), origin(o), eulerAngles(e), scale(sc) {}
+        mesh_package(std::shared_ptr<Mesh> m, std::shared_ptr<ShaderProgram> s, glm::vec3 o, glm::vec3 e, glm::vec3 sc, std::shared_ptr<Texture> t = nullptr)
+            : mesh(m), shader(s), origin(o), eulerAngles(e), scale(sc), texture(t) {}
     };
     std::vector<mesh_package> meshes;
     
     Model() = default;
-    Model(const std::filesystem::path & filename, std::shared_ptr<ShaderProgram> shader) {
+    Model(const std::filesystem::path & filename, std::shared_ptr<ShaderProgram> shader, std::shared_ptr<Texture> texture = nullptr) {
         std::vector<Vertex> vertices;
         std::vector<GLuint> indices;
         if (loadOBJ(filename, vertices, indices)) {
             auto mesh = std::make_shared<Mesh>(vertices, indices, GL_TRIANGLES);
-            addMesh(mesh, shader);
+            if (texture) mesh->setTexture(texture);
+            addMesh(mesh, shader, glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(1.0f), texture);
         }
     }
 
@@ -56,9 +53,10 @@ public:
                  std::shared_ptr<ShaderProgram> shader, 
                  glm::vec3 origin = glm::vec3(0.0f),      
                  glm::vec3 eulerAngles = glm::vec3(0.0f), 
-                 glm::vec3 scale = glm::vec3(1.0f)       
+                 glm::vec3 scale = glm::vec3(1.0f),
+                 std::shared_ptr<Texture> texture = nullptr
                  ) {
-        meshes.emplace_back(mesh, shader, origin, eulerAngles, scale);
+        meshes.emplace_back(mesh, shader, origin, eulerAngles, scale, texture);
     }
 
     // update based on running time

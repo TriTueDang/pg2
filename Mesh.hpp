@@ -9,6 +9,8 @@
 
 #include "assets.hpp"
 #include "non_copyable.hpp"
+#include "Texture.hpp"
+#include <memory>
 
 class Mesh: private NonCopyable
 {
@@ -58,6 +60,9 @@ public:
     }    
 
     void draw() {
+        if (texture_) {
+            texture_->bind(0);
+        }
         glBindVertexArray(vao_);
         
     	if (ebo_ == 0) {
@@ -65,6 +70,10 @@ public:
     	} else {
     		glDrawElements(primitive_type_, static_cast<GLsizei>(indices_.size()), GL_UNSIGNED_INT, nullptr);
     	}
+    }
+
+    void setTexture(std::shared_ptr<Texture> texture) {
+        texture_ = texture;
     }
 
     ~Mesh() {
@@ -85,4 +94,6 @@ private:
     GLuint vao_{0};
     GLuint vbo_{0};
     GLuint ebo_{0};
+
+    std::shared_ptr<Texture> texture_;
 };
