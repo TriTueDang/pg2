@@ -321,10 +321,49 @@ void App::print_glm_info()
 void App::init_assets(void) {
     shader_prog = ShaderProgram::from_files("shader.vert", "shader.frag");
     auto texture = std::make_shared<Texture>("07lab - tex-20260327T070642Z-3-001/07lab - tex/00 textures - resources/textures/box.png");
-    model = std::make_shared<Model>("triangle.obj", shader_prog, texture);
+    model = std::make_shared<Model>("cube.obj", shader_prog, texture);
     
     shader_prog->use();
     shader_prog->setUniform("uTexture", 0);
+
+    // Initialize directional light (sun)
+    dir_light.direction = glm::normalize(glm::vec3(1.0f, -1.0f, -1.0f));
+    dir_light.ambient = glm::vec3(0.2f, 0.2f, 0.2f);
+    dir_light.diffuse = glm::vec3(0.8f, 0.8f, 0.8f);
+    dir_light.specular = glm::vec3(1.0f, 1.0f, 1.0f);
+
+    // Initialize 3 point lights at different positions
+    PointLight light1;
+    light1.position = glm::vec3(5.0f, 3.0f, 3.0f);
+    light1.ambient = glm::vec3(0.1f, 0.1f, 0.1f);
+    light1.diffuse = glm::vec3(1.0f, 0.5f, 0.5f);
+    light1.specular = glm::vec3(1.0f, 1.0f, 1.0f);
+    point_lights.push_back(light1);
+
+    PointLight light2;
+    light2.position = glm::vec3(-5.0f, 3.0f, 3.0f);
+    light2.ambient = glm::vec3(0.1f, 0.1f, 0.1f);
+    light2.diffuse = glm::vec3(0.5f, 1.0f, 0.5f);
+    light2.specular = glm::vec3(1.0f, 1.0f, 1.0f);
+    point_lights.push_back(light2);
+
+    PointLight light3;
+    light3.position = glm::vec3(0.0f, -3.0f, 3.0f);
+    light3.ambient = glm::vec3(0.1f, 0.1f, 0.1f);
+    light3.diffuse = glm::vec3(0.5f, 0.5f, 1.0f);
+    light3.specular = glm::vec3(1.0f, 1.0f, 1.0f);
+    point_lights.push_back(light3);
+
+    // Initialize spot light (headlight attached to camera)
+    SpotLight headlight;
+    headlight.position = glm::vec3(0.0f, 0.0f, 0.0f);
+    headlight.direction = glm::vec3(0.0f, 0.0f, -1.0f);
+    headlight.ambient = glm::vec3(0.1f, 0.1f, 0.1f);
+    headlight.diffuse = glm::vec3(1.0f, 1.0f, 0.8f);
+    headlight.specular = glm::vec3(1.0f, 1.0f, 1.0f);
+    headlight.cutoff = 12.5f;
+    headlight.outer_cutoff = 17.5f;
+    spot_lights.push_back(headlight);
 }
 
 
@@ -384,7 +423,6 @@ int App::run(void)
 				ImGui_ImplOpenGL3_NewFrame();
 				ImGui_ImplGlfw_NewFrame();
 				ImGui::NewFrame();
-				//ImGui::ShowDemoWindow(); // Enable mouse when using Demo!
 				ImGui::SetNextWindowPos(ImVec2(10, 10));
 				ImGui::SetNextWindowSize(ImVec2(300, 150));
 
@@ -392,7 +430,6 @@ int App::run(void)
 				ImGui::Text("FPS: %.1f", FPS);
 				ImGui::Text("V-Sync: %s (hit V to toggle)", is_vsync_on ? "ON" : "OFF");
 				ImGui::Text("Multisample (AA): %s (hit M to toggle)", is_multisample_on ? "ON" : "OFF");
-				// ImGui::Text("Background color: (hit C to change)");
 				ImGui::Text("(hit P for Screenshot)");
 				ImGui::Text("(press RMB to release mouse)");
 				ImGui::Text("(hit G to show/hide info)");
@@ -411,8 +448,26 @@ int App::run(void)
 
 			// Ať krychle nestojí na místě a jde vidět ze všech stran, necháme jí rotovat:
 			if (model) {
-				// model->eulerAngles.y = now * 50.0f;
-				// model->eulerAngles.x = now * 30.0f;
+				model->eulerAngles.y = now * 50.0f;
+				model->eulerAngles.x = now * 30.0f;
+			}
+
+			// Animate point lights around the cube
+			if (!point_lights.empty()) {
+				float radius = 5.0f;
+				point_lights[0].position = glm::vec3(radius * sin(now), 3.0f, radius * cos(now));
+				if (point_lights.size() > 1) {
+					point_lights[1].position = glm::vec3(radius * sin(now + 2.0f), 3.0f, radius * cos(now + 2.0f));
+				}
+				if (point_lights.size() > 2) {
+					point_lights[2].position = glm::vec3(radius * sin(now + 4.0f), -3.0f, radius * cos(now + 4.0f));
+				}
+			}
+
+			// Update spotlight - attach to camera (headlight)
+			if (!spot_lights.empty()) {
+				spot_lights[0].position = camera.Position;
+				spot_lights[0].direction = camera.Front;
 			}
 
 			//
@@ -431,7 +486,33 @@ int App::run(void)
 			shader_prog->use(); // VZDY musitme aktivovat nas shader pred kreslenim, protoze ImGui (kreslene na konci smycky) prehazuje na svuj shader!
 			shader_prog->setUniform("uV_m", camera.GetViewMatrix());
 			shader_prog->setUniform("uP_m", projection_matrix);
-			// shader_prog->setUniform("color", glm::vec4(tri_r, tri_g, tri_b, 1.0f));
+
+			// Set up DIRECTIONAL LIGHT uniforms
+			shader_prog->setUniform("dir_light_direction", dir_light.direction);
+			shader_prog->setUniform("dir_light_ambient", dir_light.ambient);
+			shader_prog->setUniform("dir_light_diffuse", dir_light.diffuse);
+			shader_prog->setUniform("dir_light_specular", dir_light.specular);
+
+			// Set up POINT LIGHTS uniforms
+			shader_prog->setUniform("num_point_lights", (int)point_lights.size());
+			for (size_t i = 0; i < point_lights.size() && i < 3; i++) {
+				std::string idx = std::to_string(i);
+				shader_prog->setUniform("point_light_position[" + idx + "]", point_lights[i].position);
+				shader_prog->setUniform("point_light_ambient[" + idx + "]", point_lights[i].ambient);
+				shader_prog->setUniform("point_light_diffuse[" + idx + "]", point_lights[i].diffuse);
+				shader_prog->setUniform("point_light_specular[" + idx + "]", point_lights[i].specular);
+			}
+
+			// Set up SPOTLIGHT uniforms
+			if (!spot_lights.empty()) {
+				shader_prog->setUniform("spot_light_position", spot_lights[0].position);
+				shader_prog->setUniform("spot_light_direction", spot_lights[0].direction);
+				shader_prog->setUniform("spot_light_ambient", spot_lights[0].ambient);
+				shader_prog->setUniform("spot_light_diffuse", spot_lights[0].diffuse);
+				shader_prog->setUniform("spot_light_specular", spot_lights[0].specular);
+				shader_prog->setUniform("spot_light_cutoff", spot_lights[0].cutoff);
+				shader_prog->setUniform("spot_light_outer_cutoff", spot_lights[0].outer_cutoff);
+			}
 
 			// draw all (pokud bys mel objekty v poli scene)
 			for (auto& [name, model_obj] : scene) {
