@@ -1,6 +1,6 @@
 #include <string>
 #include <algorithm>
-#include <GL/glew.h> 
+#include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <iostream>
 #include <fstream>
@@ -31,7 +31,7 @@ bool loadOBJ(const std::filesystem::path& filename, std::vector<Vertex>& vertice
 	while (std::getline(file, line)) {
 		lineNum++;
 		if (line.empty() || line[0] == '#') continue;
-		
+
 		std::stringstream ss(line);
 		std::string head;
 		ss >> head;
@@ -63,13 +63,17 @@ bool loadOBJ(const std::filesystem::path& filename, std::vector<Vertex>& vertice
 			temp_normals.push_back(normal);
 		}
 		else if (head == "f") {
-			std::string vertexStr;
+			struct FaceVertex { unsigned int v, t, n; };
+			FaceVertex face[3];
+			bool hasNormals = true;
+
 			for (int i = 0; i < 3; i++) {
+				std::string vertexStr;
 				if (!(ss >> vertexStr)) {
 					std::cerr << "Error reading face vertex at line " << lineNum << std::endl;
 					break;
 				}
-				
+
 				unsigned int vIdx = 0, tIdx = 0, nIdx = 0;
 				// OBJ faces can be: v, v/t, v//n, v/t/n
 				size_t firstSlash = vertexStr.find('/');
@@ -80,30 +84,60 @@ bool loadOBJ(const std::filesystem::path& filename, std::vector<Vertex>& vertice
 					size_t secondSlash = vertexStr.find('/', firstSlash + 1);
 					if (secondSlash == std::string::npos) {
 						tIdx = std::stoi(vertexStr.substr(firstSlash + 1));
+						hasNormals = false;
 					} else {
 						if (secondSlash > firstSlash + 1) {
 							tIdx = std::stoi(vertexStr.substr(firstSlash + 1, secondSlash - firstSlash - 1));
+						} else {
+							hasNormals = false;
 						}
-						nIdx = std::stoi(vertexStr.substr(secondSlash + 1));
+						if (secondSlash + 1 < vertexStr.size()) {
+							nIdx = std::stoi(vertexStr.substr(secondSlash + 1));
+						} else {
+							hasNormals = false;
+						}
 					}
 				}
+				face[i] = { vIdx, tIdx, nIdx };
+			}
 
+			// Determine face normal for cases without normals
+			glm::vec3 faceNormal = glm::vec3(0.0f, 0.0f, 1.0f);
+			if (!hasNormals && temp_vertices.size() >= 3) {
+				glm::vec3 p0 = temp_vertices[face[0].v - 1];
+				glm::vec3 p1 = temp_vertices[face[1].v - 1];
+				glm::vec3 p2 = temp_vertices[face[2].v - 1];
+				faceNormal = glm::normalize(glm::cross(p1 - p0, p2 - p0));
+			}
+
+			auto compute_fallback_uv = [&](const glm::vec3 &pos, const glm::vec3 &normal) {
+				glm::vec3 an = glm::abs(normal);
+				if (an.x >= an.y && an.x >= an.z) {
+					return glm::vec2((pos.z + 0.5f), (pos.y + 0.5f));
+				} else if (an.y >= an.x && an.y >= an.z) {
+					return glm::vec2((pos.x + 0.5f), (pos.z + 0.5f));
+				} else {
+					return glm::vec2((pos.x + 0.5f), (pos.y + 0.5f));
+				}
+			};
+
+			for (int i = 0; i < 3; i++) {
 				Vertex v;
-				v.Position = temp_vertices[vIdx - 1];
-				v.Normal = (nIdx > 0 && nIdx <= temp_normals.size()) ? temp_normals[nIdx - 1] : glm::vec3(0, 0, 1);
-				v.TexCoords = (tIdx > 0 && tIdx <= temp_uvs.size()) ? temp_uvs[tIdx - 1] : glm::vec2(0, 0);
+				v.Position = temp_vertices[face[i].v - 1];
+				v.Normal = (face[i].n > 0 && face[i].n <= temp_normals.size()) ? temp_normals[face[i].n - 1] : faceNormal;
+				v.TexCoords = (face[i].t > 0 && face[i].t <= temp_uvs.size()) ? temp_uvs[face[i].t - 1] : compute_fallback_uv(v.Position, v.Normal);
 
 				auto it = std::find(vertices.begin(), vertices.end(), v);
 				if (it == vertices.end()) {
 					vertices.push_back(v);
 					indices.push_back(vertices.size() - 1);
 				} else {
-					indices.push_back(std::distance(vertices.begin(), it));
+					indices.push_back(static_cast<GLuint>(std::distance(vertices.begin(), it)));
 				}
 			}
 		}
 	}
-	
+
 	std::cout << "Successfully loaded: " << filename.string() << " (" << vertices.size() << " vertices, " << indices.size() << " indices)" << std::endl;
 	return true;
 }

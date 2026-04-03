@@ -320,9 +320,10 @@ void App::print_glm_info()
 
 void App::init_assets(void) {
     shader_prog = ShaderProgram::from_files("shader.vert", "shader.frag");
-    auto texture = std::make_shared<Texture>("07lab - tex-20260327T070642Z-3-001/07lab - tex/00 textures - resources/textures/box.png");
-    model = std::make_shared<Model>("cube.obj", shader_prog, texture);
-    
+    // auto texture = std::make_shared<Texture>("07lab - tex-20260327T070642Z-3-001/07lab - tex/00 textures - resources/textures/box.png");
+		auto texture = std::make_shared<Texture>("textures/box.png"); // adjust path as needed
+    model = std::make_shared<Model>("objects/cube_triangles.obj", shader_prog, texture); // adjust path as needed
+
     shader_prog->use();
     shader_prog->setUniform("uTexture", 0);
 
