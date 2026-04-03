@@ -26,7 +26,6 @@ CMakePresets.json
 *.exe
 *.dll
 *.lib
-*.obj
 *.pdb
 
 # vcpkg
