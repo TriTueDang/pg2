@@ -18,6 +18,33 @@
 #include <memory>
 
 #include "camera.hpp"
+
+// Light data structures
+struct DirectionalLight {
+    glm::vec3 direction = glm::vec3(0.0f, -1.0f, -1.0f); // Light direction
+    glm::vec3 ambient = glm::vec3(0.2f, 0.2f, 0.2f);
+    glm::vec3 diffuse = glm::vec3(0.8f, 0.8f, 0.8f);
+    glm::vec3 specular = glm::vec3(1.0f, 1.0f, 1.0f);
+};
+
+struct PointLight {
+    glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 ambient = glm::vec3(0.2f, 0.2f, 0.2f);
+    glm::vec3 diffuse = glm::vec3(0.8f, 0.8f, 0.8f);
+    glm::vec3 specular = glm::vec3(1.0f, 1.0f, 1.0f);
+    float radius = 100.0f; // Attenuation radius
+};
+
+struct SpotLight {
+    glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 direction = glm::vec3(0.0f, -1.0f, 0.0f);
+    glm::vec3 ambient = glm::vec3(0.2f, 0.2f, 0.2f);
+    glm::vec3 diffuse = glm::vec3(0.8f, 0.8f, 0.8f);
+    glm::vec3 specular = glm::vec3(1.0f, 1.0f, 1.0f);
+    float cutoff = 12.5f; // Inner cone angle
+    float outer_cutoff = 17.5f; // Outer cone angle
+};
+
 class App {
 
 protected:
@@ -67,6 +94,13 @@ private:
 
     std::shared_ptr<ShaderProgram> shader_prog;
     std::shared_ptr<Model> model;
+
+    // Lighting
+    DirectionalLight dir_light;
+    std::vector<PointLight> point_lights;
+    std::vector<SpotLight> spot_lights;
+    int active_light_type = 0; // 0 = directional, 1 = point
+    int active_light_index = 0; // For point and spot lights
 
     // Application state
     float bg_r = 0.1f, bg_g = 0.1f, bg_b = 0.15f;
