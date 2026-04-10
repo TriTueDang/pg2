@@ -93,7 +93,10 @@ private:
     GLFWwindow* window = nullptr;
 
     std::shared_ptr<ShaderProgram> shader_prog;
-    std::shared_ptr<Model> model;
+    std::shared_ptr<Model> city_model;
+    std::shared_ptr<Model> player_model;
+    std::shared_ptr<Model> weapon_model;
+    std::vector<std::shared_ptr<Model>> bandits;
 
     // Lighting
     DirectionalLight dir_light;
@@ -104,7 +107,64 @@ private:
 
     // Application state
     float bg_r = 0.1f, bg_g = 0.1f, bg_b = 0.15f;
-    float tri_r = 0.0f, tri_g = 0.0f, tri_b = 1.0f;
+    bool fps_mode = true;
+    float ground_height = -218.70f;
+    float walk_anim_time = 0.0f;
+    bool is_moving = false;
+    float shoot_anim_time = 0.0f;
+    glm::vec3 playerPos = glm::vec3(-121.64f, -218.70f, 63.23f);
+
+    // Gameplay
+    float player_health = 100.0f;
+    bool is_player_dead = false;
+    const float bandit_chase_dist = 50.0f;
+    const float bandit_attack_dist = 4.0f;
+    const float bandit_damage_rate = 30.0f; // health per second
+    const float bandit_speed = 4.0f;
+
+    // Physics
+    float velocity_y = 0.0f;
+    bool is_on_ground = false;
+    const float gravity = -25.0f;
+    const float jump_force = 10.0f;
+
+    // Collision Grid
+    struct Grid {
+        std::vector<std::vector<Model::Triangle>> cells;
+        glm::vec2 min_bound, max_bound;
+        int resolution = 200;
+        float cell_size_x, cell_size_z;
+    } collision_grid;
+
+    void build_collision_grid();
+    float get_ground_height(glm::vec3 pos);
+    void spawn_bandit_wave(int count);
+
+    // Gameplay Objects
+    int wave_number = 1;
+    int frame_count = 0;
+    struct Dynamite {
+        glm::vec3 position;
+        glm::vec3 velocity;
+        float timer = 2.0f;
+        bool on_ground = false;
+    };
+    std::vector<Dynamite> active_dynamites;
+    std::shared_ptr<Model> dynamite_model;
+    std::shared_ptr<Model> bandit_base_model;
+    std::vector<float> bandit_throw_timers;
+
+    struct Bullet {
+        glm::vec3 position;
+        glm::vec3 velocity;
+        float life = 3.0f;
+    };
+    std::vector<Bullet> active_bullets;
+    std::shared_ptr<Model> bullet_model;
+
+    const float bandit_throw_cooldown = 4.0f;
+    const float dynamite_damage = 40.0f;
+    const float dynamite_radius = 12.0f;
 
     // initialization helpers
     void init_imgui(void);          // set up ImGUI context and bindings

@@ -76,6 +76,9 @@ public:
         texture_ = texture;
     }
 
+    const std::vector<Vertex>& getVertices() const { return vertices_; }
+    const std::vector<GLuint>& getIndices() const { return indices_; }
+
     ~Mesh() {
     	glDeleteBuffers(1, &ebo_);
     	glDeleteBuffers(1, &vbo_);

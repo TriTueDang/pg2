@@ -320,50 +320,92 @@ void App::print_glm_info()
 
 void App::init_assets(void) {
     shader_prog = ShaderProgram::from_files("shader.vert", "shader.frag");
-    auto texture = std::make_shared<Texture>("07lab - tex-20260327T070642Z-3-001/07lab - tex/00 textures - resources/textures/box.png");
-    model = std::make_shared<Model>("cube.obj", shader_prog, texture);
     
+    // Load textures
+    auto rango_tex = std::make_shared<Texture>("assets/rango/source/tex_65.png");
+    auto revolver_tex = std::make_shared<Texture>("assets/38-special-revolver/textures/rev_d.tga.png");
+    auto bullet_tex = std::make_shared<Texture>("assets/9mm-bullet/textures/Bullet Normal.png");
+    auto city_tex = std::make_shared<Texture>("assets/chicken-gun-western-reupload/textures/PolygonWestern_Texture_01_A.png");
+    auto bandit_tex = std::make_shared<Texture>("assets/bobrito-bandito-game-ready-3d-model-free/textures/Costume_Base_color.png");
+    auto dynamite_tex = std::make_shared<Texture>("assets/dynamite/textures/Dynamite_Black_Dm.png");
+
+    // Load City
+    try {
+        city_model = std::make_shared<Model>("assets/chicken-gun-western-reupload/source/western.obj", shader_prog, city_tex);
+        city_model->scale = glm::vec3(0.05f); // Increased default scale
+    } catch (...) { std::cerr << "Failed to load western city\n"; }
+
+    // Load Rango (Player Model)
+    try {
+        player_model = std::make_shared<Model>("assets/rango/source/Rango.obj", shader_prog, rango_tex);
+        player_model->scale = glm::vec3(4.0f);
+    } catch (...) { std::cerr << "Failed to load Rango\n"; }
+
+    // Load Revolver (attached to player)
+    try {
+        weapon_model = std::make_shared<Model>("assets/38-special-revolver/source/rev_anim.obj.obj", shader_prog, revolver_tex);
+        weapon_model->scale = glm::vec3(0.005f); // Adjust scale for hand size
+    } catch (...) { std::cerr << "Failed to load revolver\n"; }
+
+    // Build collision grid for the city immediately after loading city model 
+    // to have bounds for bandit spawning
+    build_collision_grid();
+
+    // Load Bandits
+    try {
+        auto bandit_base = std::make_shared<Model>("assets/bobrito-bandito-game-ready-3d-model-free/source/Offensive Idle.obj", shader_prog, bandit_tex);
+        bandits.clear();
+        bandit_base_model = bandit_base; // Store base model for wave spawning
+        
+        bandits.clear();
+        bandit_throw_timers.clear();
+        spawn_bandit_wave(wave_number);
+    } catch (...) { std::cerr << "Failed to load bandits\n"; }
+
+    // Load Dynamite
+    try {
+        dynamite_model = std::make_shared<Model>("assets/dynamite/source/Dynamite.obj", shader_prog, dynamite_tex);
+        dynamite_model->scale = glm::vec3(0.5f);
+    } catch (...) { std::cerr << "Failed to load dynamite model\n"; }
+
+    // Load Bullet
+    try {
+        // Use Dynamite model for bullets too for optimization (it's low poly)
+        bullet_model = std::make_shared<Model>("assets/dynamite/source/Dynamite.obj", shader_prog, city_tex);
+        bullet_model->scale = glm::vec3(0.15f); // Increased scale for visibility
+    } catch (...) { std::cerr << "Failed to load bullet model\n"; }
+
     shader_prog->use();
     shader_prog->setUniform("uTexture", 0);
 
     // Initialize directional light (sun)
-    dir_light.direction = glm::normalize(glm::vec3(1.0f, -1.0f, -1.0f));
-    dir_light.ambient = glm::vec3(0.2f, 0.2f, 0.2f);
-    dir_light.diffuse = glm::vec3(0.8f, 0.8f, 0.8f);
-    dir_light.specular = glm::vec3(1.0f, 1.0f, 1.0f);
+    dir_light.direction = glm::normalize(glm::vec3(1.0f, -1.0f, -0.5f));
+    dir_light.ambient = glm::vec3(0.3f, 0.3f, 0.3f);
+    dir_light.diffuse = glm::vec3(0.8f, 0.8f, 0.8f); // Neutral white sun light
+    dir_light.specular = glm::vec3(0.5f, 0.5f, 0.5f);
 
-    // Initialize 3 point lights at different positions
+    // Initialize one point light for testing
     PointLight light1;
-    light1.position = glm::vec3(5.0f, 3.0f, 3.0f);
+    light1.position = glm::vec3(5.0f, 5.0f, 5.0f);
     light1.ambient = glm::vec3(0.1f, 0.1f, 0.1f);
-    light1.diffuse = glm::vec3(1.0f, 0.5f, 0.5f);
+    light1.diffuse = glm::vec3(1.0f, 0.8f, 0.4f);
     light1.specular = glm::vec3(1.0f, 1.0f, 1.0f);
     point_lights.push_back(light1);
 
-    PointLight light2;
-    light2.position = glm::vec3(-5.0f, 3.0f, 3.0f);
-    light2.ambient = glm::vec3(0.1f, 0.1f, 0.1f);
-    light2.diffuse = glm::vec3(0.5f, 1.0f, 0.5f);
-    light2.specular = glm::vec3(1.0f, 1.0f, 1.0f);
-    point_lights.push_back(light2);
-
-    PointLight light3;
-    light3.position = glm::vec3(0.0f, -3.0f, 3.0f);
-    light3.ambient = glm::vec3(0.1f, 0.1f, 0.1f);
-    light3.diffuse = glm::vec3(0.5f, 0.5f, 1.0f);
-    light3.specular = glm::vec3(1.0f, 1.0f, 1.0f);
-    point_lights.push_back(light3);
-
-    // Initialize spot light (headlight attached to camera)
+    // Initialize spot light (headlight/flashlight)
     SpotLight headlight;
     headlight.position = glm::vec3(0.0f, 0.0f, 0.0f);
     headlight.direction = glm::vec3(0.0f, 0.0f, -1.0f);
-    headlight.ambient = glm::vec3(0.1f, 0.1f, 0.1f);
-    headlight.diffuse = glm::vec3(1.0f, 1.0f, 0.8f);
+    headlight.ambient = glm::vec3(0.0f, 0.0f, 0.0f);
+    headlight.diffuse = glm::vec3(1.0f, 1.0f, 0.9f);
     headlight.specular = glm::vec3(1.0f, 1.0f, 1.0f);
-    headlight.cutoff = 12.5f;
-    headlight.outer_cutoff = 17.5f;
+    headlight.cutoff = 10.0f;
+    headlight.outer_cutoff = 15.0f;
     spot_lights.push_back(headlight);
+
+    // Build collision grid for the city
+    // Now done earlier in this function
+    // build_collision_grid();
 }
 
 
@@ -399,10 +441,11 @@ int App::run(void)
 
 		// Clear color saved to OpenGL state machine
 
-		glClearColor(0, 0, 0, 0);
+		glClearColor(0.2f, 0.3f, 0.4f, 1.0f); // Sky blue clear color
 
+		glEnable(GL_DEPTH_TEST);
+		glEnable(GL_CULL_FACE);
 		glCullFace(GL_BACK);
-		glDisable(GL_CULL_FACE); // Ujisti se, ze spatne natocene steny nam neschovaji model!
 
 		// disable cursor, so that it can not leave window, and we can process movement
 		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -412,8 +455,15 @@ int App::run(void)
 		update_projection_matrix();
 		glViewport(0, 0, width, height);
 
-		// Kamera byla hrozně daleko (1000 jednotek), krychle je moc malá. Nastavení na 5 zajistí, že bude vidět!
-		camera.Position = glm::vec3(0, 0, 5.0f);
+		// Starting position
+		playerPos = glm::vec3(-121.64f, -215.70f, 63.23f); // Calibrated spawn point (spawn slightly higher to fall onto it)
+		float initial_ground = get_ground_height(playerPos);
+		if (initial_ground > -300.0f) playerPos.y = initial_ground; 
+		else playerPos.y = -218.70f;
+		
+		camera.Position = playerPos + glm::vec3(0, 8.0f, 20.0f); 
+		camera.MovementSpeed = 15.0f; // Faster movement for larger scale
+		camera.Mode = CameraMode::POV_LOCKED; // To disable internal movement but keep mouse rotation
 		double last_frame_time = glfwGetTime();
 
 		while (!glfwWindowShouldClose(window))
@@ -430,9 +480,54 @@ int App::run(void)
 				ImGui::Text("FPS: %.1f", FPS);
 				ImGui::Text("V-Sync: %s (hit V to toggle)", is_vsync_on ? "ON" : "OFF");
 				ImGui::Text("Multisample (AA): %s (hit M to toggle)", is_multisample_on ? "ON" : "OFF");
-				ImGui::Text("(hit P for Screenshot)");
-				ImGui::Text("(press RMB to release mouse)");
-				ImGui::Text("(hit G to show/hide info)");
+				
+				// Health Bar
+				ImGui::Spacing();
+				ImGui::Text("HEALTH");
+				ImVec4 health_color = ImVec4(1.0f - (player_health / 100.0f), player_health / 100.0f, 0.0f, 1.0f);
+				ImGui::PushStyleColor(ImGuiCol_PlotHistogram, health_color);
+				ImGui::ProgressBar(player_health / 100.0f, ImVec2(-1, 0), "");
+				ImGui::PopStyleColor();
+
+				if (is_player_dead) {
+					ImGui::SetNextWindowPos(ImVec2(width / 2.0f - 100, height / 2.0f - 50));
+					ImGui::Begin("YOU DIED", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize);
+					ImGui::TextColored(ImVec4(1, 0, 0, 1), "WASTED");
+					if (ImGui::Button("RESPAWN")) {
+						player_health = 100.0f;
+						is_player_dead = false;
+						// Reset playerPos to start? (Optional)
+					}
+					ImGui::End();
+				}
+
+				ImGui::End();
+
+				// Crosshair
+				ImGui::GetForegroundDrawList()->AddCircle(
+					ImVec2(width / 2.0f, height / 2.0f), 
+					10.0f, 
+					IM_COL32(255, 255, 255, 150), 
+					16, 
+					2.0f
+				);
+
+				ImGui::SetNextWindowPos(ImVec2(10, 200));
+				ImGui::SetNextWindowSize(ImVec2(300, 150));
+				ImGui::Begin("Debug", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+				ImGui::Text("Player X: %.2f", playerPos.x);
+				ImGui::Text("Player Y: %.2f", playerPos.y);
+				ImGui::Text("Player Z: %.2f", playerPos.z);
+				if (ImGui::SliderFloat("Manual Ground Y", &ground_height, -800.0f, 50.0f)) {
+					// playerPos.y = ground_height; // Disabled auto-override to keep physics
+				}
+				if (city_model) {
+					float current_scale = city_model->scale.x;
+					if (ImGui::SliderFloat("City Scale", &current_scale, 0.001f, 0.5f, "%.3f")) {
+						city_model->scale = glm::vec3(current_scale);
+						build_collision_grid(); // Rebuild grid when scale changes
+					}
+				}
 				ImGui::End();
 			}
 
@@ -446,22 +541,226 @@ int App::run(void)
 			//########## react to user  ##########
 			camera.ProcessInput(window, delta_t); // process keys etc.
 
-			// Ať krychle nestojí na místě a jde vidět ze všech stran, necháme jí rotovat:
-			if (model) {
-				model->eulerAngles.y = now * 50.0f;
-				model->eulerAngles.x = now * 30.0f;
+			// --- Player and Camera Logic (3rd Person) ---
+			
+			// Move playerPos instead of camera
+			glm::vec3 moveDir(0.0f);
+			if (!is_player_dead) {
+				if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) moveDir += camera.Front;
+				if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) moveDir -= camera.Front;
+				if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) moveDir -= camera.Right;
+				if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) moveDir += camera.Right;
+			}
+			
+			is_moving = false;
+			if (glm::length(moveDir) > 0.0f) {
+				moveDir.y = 0.0f; // Don't move up/down
+				if (glm::length(moveDir) > 0.0f) { // Re-check after zeroing Y
+					glm::vec3 nextPos = playerPos + glm::normalize(moveDir) * (float)(camera.MovementSpeed * delta_t);
+					float nextGround = get_ground_height(nextPos);
+					
+					// Wall collision: only move if the height difference is small (step height)
+					if (nextGround - playerPos.y < 2.0f) { 
+						playerPos = nextPos;
+						is_moving = true;
+					}
+				}
 			}
 
-			// Animate point lights around the cube
-			if (!point_lights.empty()) {
-				float radius = 5.0f;
-				point_lights[0].position = glm::vec3(radius * sin(now), 3.0f, radius * cos(now));
-				if (point_lights.size() > 1) {
-					point_lights[1].position = glm::vec3(radius * sin(now + 2.0f), 3.0f, radius * cos(now + 2.0f));
+			// Gravity and Physics
+			velocity_y += gravity * delta_t;
+			playerPos.y += velocity_y * delta_t;
+
+			float current_ground = get_ground_height(playerPos);
+			if (playerPos.y <= current_ground) {
+				playerPos.y = current_ground;
+				velocity_y = 0.0f;
+				is_on_ground = true;
+			} else {
+				is_on_ground = false;
+			}
+
+			// Safety floor check: if we fall somehow, snap back
+			if (playerPos.y < -300.0f) {
+				playerPos.y = -218.70f;
+				velocity_y = 0;
+				is_on_ground = true;
+			}
+			
+			// Update bandit heights and implement AI
+			for (size_t i = 0; i < bandits.size(); ++i) {
+				auto& bandit = bandits[i];
+				
+				// Optimization: Only check height every 10 frames or if moving
+				if (frame_count % 10 == 0) {
+					bandit->pivot_position.y = get_ground_height(bandit->pivot_position);
 				}
-				if (point_lights.size() > 2) {
-					point_lights[2].position = glm::vec3(radius * sin(now + 4.0f), -3.0f, radius * cos(now + 4.0f));
+
+				float dist = glm::distance(playerPos, bandit->pivot_position);
+				
+				// Chase AI - only move if too far away to throw
+				if (dist > 35.0f && !is_player_dead) {
+					glm::vec3 dir = glm::normalize(playerPos - bandit->pivot_position);
+					dir.y = 0; // Keep on ground XZ
+					bandit->pivot_position += dir * (bandit_speed * delta_t);
+					bandit->pivot_position.y = get_ground_height(bandit->pivot_position);
 				}
+
+				// Dynamite AI
+				if (dist < 50.0f && dist > 5.0f && !is_player_dead) {
+					bandit_throw_timers[i] -= delta_t;
+					if (bandit_throw_timers[i] <= 0) {
+						// Throw dynamite
+						Dynamite d;
+						d.position = bandit->pivot_position + glm::vec3(0, 5.0f, 0);
+						glm::vec3 dir = glm::normalize(playerPos - d.position);
+						d.velocity = dir * 25.0f + glm::vec3(0, 10.0f, 0); // Upward arc
+						active_dynamites.push_back(d);
+						bandit_throw_timers[i] = bandit_throw_cooldown;
+					}
+				}
+
+				// Melee attack removed as requested
+			}
+
+			// Update Dynamites
+			for (auto it = active_dynamites.begin(); it != active_dynamites.end(); ) {
+				if (!it->on_ground) {
+					glm::vec3 nextPos = it->position + it->velocity * delta_t;
+					float nextGround = get_ground_height(nextPos);
+					
+					// Wall collision: if something is suddenly high in front of it
+					if (nextGround > it->position.y + 0.5f) {
+						it->timer = 0; // Detonate at wall
+					}
+					
+					it->velocity.y += gravity * delta_t;
+					it->position += it->velocity * delta_t;
+
+					float ground = get_ground_height(it->position);
+					if (it->position.y < ground) {
+						it->position.y = ground;
+						it->velocity = glm::vec3(0); // Stop at ground
+						it->on_ground = true;
+					}
+				}
+				it->timer -= delta_t;
+
+				if (it->timer <= 0) {
+					// Explosion!
+					float dist = glm::distance(it->position, playerPos);
+					if (dist < dynamite_radius) {
+						player_health -= dynamite_damage * (1.0f - (dist / dynamite_radius));
+						if (player_health <= 0) is_player_dead = true;
+					}
+					it = active_dynamites.erase(it);
+				} else {
+					++it;
+				}
+			}
+
+			// Update Bullets
+			for (auto it = active_bullets.begin(); it != active_bullets.end(); ) {
+				glm::vec3 nextPos = it->position + it->velocity * delta_t;
+				float nextGround = get_ground_height(nextPos);
+				
+				// Wall/Ground collision for bullets
+				if (nextGround > it->position.y + 0.1f) {
+					it = active_bullets.erase(it);
+					continue;
+				}
+				
+				it->position = nextPos;
+				it->life -= delta_t;
+
+				bool hit = false;
+				// Collision with bandits
+				for (size_t i = 0; i < bandits.size(); ++i) {
+					float dist = glm::distance(it->position, bandits[i]->pivot_position + glm::vec3(0, 5.0f, 0));
+					if (dist < 3.0f) { // Collision radius
+						bandits.erase(bandits.begin() + i);
+						if (i < bandit_throw_timers.size()) {
+							bandit_throw_timers.erase(bandit_throw_timers.begin() + i);
+						}
+						hit = true;
+						break;
+					}
+				}
+
+				if (hit || it->life <= 0) {
+					it = active_bullets.erase(it);
+				} else {
+					++it;
+				}
+			}
+
+			// Wave progression
+			if (bandits.empty() && !is_player_dead) {
+				wave_number++;
+				spawn_bandit_wave(wave_number);
+			}
+
+			// Update Frame Count for optimization
+			frame_count++;
+
+			// Jump handling
+			if (is_on_ground && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+				velocity_y = jump_force;
+				is_on_ground = false;
+			}
+
+			// Walking animation (procedural bobbing and swaying)
+			float bobbing = 0.0f;
+			float sway = 0.0f;
+			if (is_moving && is_on_ground) {
+				walk_anim_time += delta_t * 12.0f; // Faster animation
+				bobbing = sin(walk_anim_time) * 0.15f; // More bobbing
+				sway = sin(walk_anim_time * 0.5f) * 12.0f; // More sway
+			} else if (is_on_ground) {
+				walk_anim_time += delta_t * 2.5f;
+				bobbing = sin(walk_anim_time) * 0.02f; 
+				sway = 0.0f;
+			}
+
+			// Adjusting player model (Rango)
+			if (player_model) {
+				// Offset SIGNIFICANTLY (waist-deep fix)
+				player_model->pivot_position = playerPos + glm::vec3(0, 7.5f, 0);
+				player_model->pivot_position.y += bobbing; 
+				player_model->eulerAngles.y = camera.Yaw + 90.0f;
+				player_model->eulerAngles.z = sway; // Apply swaying tilt
+			}
+
+			// Update weapon position (attach to player hand area)
+			if (weapon_model && player_model) {
+				// Offset scaled for Rango scale 4.0
+				weapon_model->pivot_position = player_model->pivot_position + camera.Right * 1.2f + camera.Up * 3.5f + camera.Front * 1.5f;
+				weapon_model->eulerAngles.y = camera.Yaw + 180.0f;
+				weapon_model->eulerAngles.x = -camera.Pitch;
+				weapon_model->eulerAngles.z = player_model->eulerAngles.z; // Follow sway
+				
+				if (shoot_anim_time > 0.0f) {
+					weapon_model->eulerAngles.x += sin(shoot_anim_time * 15.0f) * 10.0f;
+					shoot_anim_time -= delta_t;
+				}
+			}
+
+			// Position camera behind player
+			glm::vec3 idealCameraPos = playerPos + (-camera.Front * 18.0f + camera.Up * 8.0f);
+			
+			// Camera collision: if ideal pos is underground or inside a building
+			float camGround = get_ground_height(idealCameraPos);
+			if (idealCameraPos.y < camGround + 2.0f) {
+				// Slide camera closer to player if blocked
+				idealCameraPos = playerPos + (-camera.Front * 5.0f + camera.Up * 4.0f); 
+			}
+			camera.Position = idealCameraPos;
+
+			// Orient bandits towards player
+			for (auto& bandit : bandits) {
+				glm::vec3 dir = glm::normalize(camera.Position - bandit->pivot_position);
+				float angle = glm::degrees(atan2(dir.x, dir.z));
+				bandit->eulerAngles.y = angle;
 			}
 
 			// Update spotlight - attach to camera (headlight)
@@ -519,10 +818,54 @@ int App::run(void)
 				model_obj.draw();
 			}
 
-			// Ale protoze 'scene' je zatim prazdne (v init_assets nebylo nic pridano),
-			// musime navic vykreslit primo nas nacteny model:
-			if (model) {
-				model->draw();
+			// Draw city
+			if (city_model) {
+				city_model->draw();
+			}
+
+			// Draw player (Rango)
+			if (player_model) {
+				player_model->draw();
+			}
+
+		// Draw bandits
+			for (auto& bandit : bandits) {
+				glm::vec3 original_pos = bandit->pivot_position;
+				bandit->pivot_position.y += 5.0f; // Increased rendering offset
+				bandit->draw();
+				bandit->pivot_position = original_pos; // Restore for AI
+			}
+
+			// Draw dynamites
+			if (dynamite_model) {
+				for (auto& d : active_dynamites) {
+					dynamite_model->pivot_position = d.position;
+					// Add some spin
+					dynamite_model->eulerAngles.x += 200.0f * delta_t;
+					dynamite_model->draw();
+				}
+			}
+
+			// Draw bullets
+			if (bullet_model) {
+				for (auto& b : active_bullets) {
+					bullet_model->pivot_position = b.position;
+					// Align bullet to velocity
+					if (glm::length(b.velocity) > 0.01f) {
+						glm::vec3 dir = glm::normalize(b.velocity);
+						bullet_model->eulerAngles.y = glm::degrees(atan2(dir.x, dir.z));
+						bullet_model->eulerAngles.x = glm::degrees(asin(dir.y));
+					}
+					bullet_model->draw();
+				}
+			}
+
+			// Draw weapon (last to be on top?)
+			if (weapon_model) {
+				// Clear depth before drawing weapon to avoid clipping into walls? 
+				// Actually might not be good for all cases, but works for HUD.
+				// glClear(GL_DEPTH_BUFFER_BIT); 
+				weapon_model->draw();
 			}
 
 			// ImGui display
@@ -675,7 +1018,16 @@ if (action == GLFW_PRESS) {
 				glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 			}
 			else {
-				// we are already inside our game: shoot, click, etc.
+				// we are already inside our game: shoot!
+				auto this_inst = static_cast<App*>(glfwGetWindowUserPointer(window));
+				this_inst->shoot_anim_time = 0.3f; // 0.3 seconds animation
+				
+				// Spawn Bullet
+				Bullet b;
+				b.position = this_inst->player_model->pivot_position + this_inst->camera.Up * 6.0f + this_inst->camera.Front * 3.0f;
+				b.velocity = this_inst->camera.Front * 150.0f; // Fast bullet
+				this_inst->active_bullets.push_back(b);
+
 				std::cout << "Bang!\n";
 			}
 			break;
@@ -847,4 +1199,112 @@ void App::take_screenshot() {
 	} else {
 		std::cerr << "Failed to save screenshot: " << filename << std::endl;
 	}
+}
+
+void App::build_collision_grid() {
+    if (!city_model) return;
+
+    auto triangles = city_model->getTriangles();
+    if (triangles.empty()) return;
+
+    // Find bounds
+    glm::vec3 min(1e10f), max(-1e10f);
+    for (const auto& tri : triangles) {
+        min = glm::min(min, glm::min(tri.v0, glm::min(tri.v1, tri.v2)));
+        max = glm::max(max, glm::max(tri.v0, glm::max(tri.v1, tri.v2)));
+    }
+
+    collision_grid.min_bound = glm::vec2(min.x, min.z);
+    collision_grid.max_bound = glm::vec2(max.x, max.z);
+    collision_grid.cells.assign(collision_grid.resolution * collision_grid.resolution, {});
+
+    collision_grid.cell_size_x = (collision_grid.max_bound.x - collision_grid.min_bound.x) / collision_grid.resolution;
+    collision_grid.cell_size_z = (collision_grid.max_bound.y - collision_grid.min_bound.y) / collision_grid.resolution;
+
+    for (const auto& tri : triangles) {
+        // Find cell range for this triangle
+        float tri_min_x = std::min({tri.v0.x, tri.v1.x, tri.v2.x});
+        float tri_max_x = std::max({tri.v0.x, tri.v1.x, tri.v2.x});
+        float tri_min_z = std::min({tri.v0.z, tri.v1.z, tri.v2.z});
+        float tri_max_z = std::max({tri.v0.z, tri.v1.z, tri.v2.z});
+
+        int start_x = std::max(0, (int)((tri_min_x - collision_grid.min_bound.x) / collision_grid.cell_size_x));
+        int end_x = std::min(collision_grid.resolution - 1, (int)((tri_max_x - collision_grid.min_bound.x) / collision_grid.cell_size_x));
+        int start_z = std::max(0, (int)((tri_min_z - collision_grid.min_bound.y) / collision_grid.cell_size_z));
+        int end_z = std::min(collision_grid.resolution - 1, (int)((tri_max_z - collision_grid.min_bound.y) / collision_grid.cell_size_z));
+
+        for (int ix = start_x; ix <= end_x; ++ix) {
+            for (int iz = start_z; iz <= end_z; ++iz) {
+                collision_grid.cells[ix + iz * collision_grid.resolution].push_back(tri);
+            }
+        }
+    }
+    std::cout << "Collision grid built with " << triangles.size() << " triangles.\n";
+}
+
+float App::get_ground_height(glm::vec3 pos) {
+    int ix = (int)((pos.x - collision_grid.min_bound.x) / collision_grid.cell_size_x);
+    int iz = (int)((pos.z - collision_grid.min_bound.y) / collision_grid.cell_size_z);
+
+    if (ix < 0 || ix >= collision_grid.resolution || iz < 0 || iz >= collision_grid.resolution) return -1000.0f;
+
+    const auto& cell_triangles = collision_grid.cells[ix + iz * collision_grid.resolution];
+    float max_y = -1000.0f;
+
+    for (const auto& tri : cell_triangles) {
+        // Möller-Trumbore ray-triangle intersection (ray is vertical down)
+        glm::vec3 edge1 = tri.v1 - tri.v0;
+        glm::vec3 edge2 = tri.v2 - tri.v0;
+        glm::vec3 h = glm::cross(glm::vec3(0, -1, 0), edge2);
+        float a = glm::dot(edge1, h);
+
+        if (a > -0.00001f && a < 0.00001f) continue;
+
+        float f = 1.0f / a;
+        glm::vec3 s = (pos + glm::vec3(0, 10.0f, 0)) - tri.v0; // Cast from higher up for stability
+        float u = f * glm::dot(s, h);
+
+        if (u < 0.0f || u > 1.0f) continue;
+
+        glm::vec3 q = glm::cross(s, edge1);
+        float v = f * glm::dot(glm::vec3(0, -1, 0), q);
+
+        if (v < 0.0f || u + v > 1.0f) continue;
+
+        float t = f * glm::dot(edge2, q);
+        if (t > 0.0f) {
+            float hit_y = (pos.y + 3.0f) - t;
+            if (hit_y > max_y) max_y = hit_y;
+        }
+    }
+
+    return max_y;
+}
+void App::spawn_bandit_wave(int count) {
+    if (!bandit_base_model) return;
+    
+    std::default_random_engine generator((unsigned)time(0));
+    std::uniform_real_distribution<float> dist_x(-600.0f, 400.0f);
+    std::uniform_real_distribution<float> dist_z(-400.0f, 600.0f);
+
+    for (int i = 0; i < count; ++i) {
+        auto bandit = std::make_shared<Model>(*bandit_base_model);
+        
+        // Spawn far away from player
+        glm::vec3 spawn_pos;
+        int attempts = 0;
+        do {
+            spawn_pos = glm::vec3(dist_x(generator), -218.0f, dist_z(generator));
+            attempts++;
+        } while (glm::distance(spawn_pos, playerPos) < 150.0f && attempts < 10);
+
+        bandit->pivot_position = spawn_pos;
+        bandit->pivot_position.y = get_ground_height(bandit->pivot_position);
+        if (bandit->pivot_position.y < -500.0f) bandit->pivot_position.y = -218.70f;
+        
+        bandit->scale = glm::vec3(0.04f); // Increased scale
+        bandits.push_back(bandit);
+        bandit_throw_timers.push_back(2.0f + (float)(rand() % 4)); 
+    }
+    std::cout << "Wave started with " << count << " bandits.\n";
 }

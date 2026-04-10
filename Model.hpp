@@ -63,6 +63,50 @@ public:
     void update(const float delta_t) {
     }
     
+    struct Triangle {
+        glm::vec3 v0, v1, v2;
+    };
+
+    std::vector<Triangle> getTriangles() const {
+        std::vector<Triangle> world_triangles;
+        
+        // Base model matrix
+        glm::mat4 T = glm::translate(glm::mat4(1.0f), pivot_position);
+        glm::mat4 R = glm::yawPitchRoll(glm::radians(eulerAngles.y), glm::radians(eulerAngles.x), glm::radians(eulerAngles.z));
+        glm::mat4 S = glm::scale(glm::mat4(1.0f), scale);
+        glm::mat4 model_matrix = T * R * S;
+
+        for (auto const& mesh_pkg : meshes) {
+            // Mesh-local transformation
+            glm::mat4 mT = glm::translate(glm::mat4(1.0f), mesh_pkg.origin);
+            glm::mat4 mR = glm::yawPitchRoll(glm::radians(mesh_pkg.eulerAngles.y), glm::radians(mesh_pkg.eulerAngles.x), glm::radians(mesh_pkg.eulerAngles.z));
+            glm::mat4 mS = glm::scale(glm::mat4(1.0f), mesh_pkg.scale);
+            glm::mat4 final_m = model_matrix * (mT * mR * mS);
+
+            const auto& verts = mesh_pkg.mesh->getVertices();
+            const auto& indices = mesh_pkg.mesh->getIndices();
+
+            if (indices.empty()) {
+                for (size_t i = 0; i + 2 < verts.size(); i += 3) {
+                    world_triangles.push_back({
+                        glm::vec3(final_m * glm::vec4(verts[i].Position, 1.0f)),
+                        glm::vec3(final_m * glm::vec4(verts[i+1].Position, 1.0f)),
+                        glm::vec3(final_m * glm::vec4(verts[i+2].Position, 1.0f))
+                    });
+                }
+            } else {
+                for (size_t i = 0; i + 2 < indices.size(); i += 3) {
+                    world_triangles.push_back({
+                        glm::vec3(final_m * glm::vec4(verts[indices[i]].Position, 1.0f)),
+                        glm::vec3(final_m * glm::vec4(verts[indices[i+1]].Position, 1.0f)),
+                        glm::vec3(final_m * glm::vec4(verts[indices[i+2]].Position, 1.0f))
+                    });
+                }
+            }
+        }
+        return world_triangles;
+    }
+
     void draw() {
         // Calculate base model matrix for the whole model
         glm::mat4 T = glm::translate(glm::mat4(1.0f), pivot_position);

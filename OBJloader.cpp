@@ -6,6 +6,7 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <map>
 
 #include "OBJloader.hpp"
 
@@ -28,6 +29,8 @@ bool loadOBJ(const std::filesystem::path& filename, std::vector<Vertex>& vertice
 
 	std::string line;
 	int lineNum = 0;
+	std::map<Vertex, GLuint> vertexToIndex;
+
 	while (std::getline(file, line)) {
 		lineNum++;
 		if (line.empty() || line[0] == '#') continue;
@@ -93,13 +96,11 @@ bool loadOBJ(const std::filesystem::path& filename, std::vector<Vertex>& vertice
 				v.Normal = (nIdx > 0 && nIdx <= temp_normals.size()) ? temp_normals[nIdx - 1] : glm::vec3(0, 0, 1);
 				v.TexCoords = (tIdx > 0 && tIdx <= temp_uvs.size()) ? temp_uvs[tIdx - 1] : glm::vec2(0, 0);
 
-				auto it = std::find(vertices.begin(), vertices.end(), v);
-				if (it == vertices.end()) {
+				auto [it, inserted] = vertexToIndex.try_emplace(v, static_cast<GLuint>(vertices.size()));
+				if (inserted) {
 					vertices.push_back(v);
-					indices.push_back(vertices.size() - 1);
-				} else {
-					indices.push_back(std::distance(vertices.begin(), it));
 				}
+				indices.push_back(it->second);
 			}
 		}
 	}
