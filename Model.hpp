@@ -40,14 +40,14 @@ public:
     
     Model() = default;
     Model(const std::filesystem::path & filename, std::shared_ptr<ShaderProgram> shader, std::shared_ptr<Texture> texture = nullptr) {
-        std::vector<Vertex> vertices;
-        std::vector<GLuint> indices;
-        if (loadOBJ(filename, vertices, indices)) {
-            auto mesh = std::make_shared<Mesh>(vertices, indices, GL_TRIANGLES);
+        auto loadedMeshes = loadOBJ(filename);
+        for (auto & mData : loadedMeshes) {
+            auto mesh = std::make_shared<Mesh>(mData.vertices, mData.indices, GL_TRIANGLES);
             if (texture) mesh->setTexture(texture);
             addMesh(mesh, shader, glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(1.0f), texture);
         }
     }
+
 
     void addMesh(std::shared_ptr<Mesh> mesh,
                  std::shared_ptr<ShaderProgram> shader, 

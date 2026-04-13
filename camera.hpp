@@ -10,6 +10,8 @@ enum class CameraMode {
     POV_LOCKED
 };
 
+namespace PG2 { class PhysicsEngine; }
+
 class Camera
 {
 public:
@@ -17,6 +19,11 @@ public:
     CameraMode Mode = CameraMode::FREE_FLOATING;
     const glm::vec3* TargetPosition = nullptr; // Pointer to the tracked object's position
     glm::vec3 POVOffset = glm::vec3(0.0f, 0.0f, 0.0f); // Offset from the target (e.g., eye level)
+
+    // Camera Constants
+    float desiredDistance = 15.0f;
+    float currentDistance = 15.0f;
+    float minDistance = 2.0f;
 
     // Camera Attributes
     glm::vec3 Position{};
@@ -47,17 +54,22 @@ public:
     // Call this every frame in your game loop
     void Update() {
         if (Mode == CameraMode::POV_LOCKED && TargetPosition != nullptr) {
-            // Snap camera to the target's position plus the offset
-            this->Position = *TargetPosition + POVOffset;
+            // Base position logic is now handled in HandleCollision or externally
+            // to allow for collision response.
         }
     }
 
     // Attach the camera to an object for POV mode
-    void AttachTo(const glm::vec3* targetPos, glm::vec3 offset = glm::vec3(0.0f, 0.5f, 0.0f)) {
+    void AttachTo(const glm::vec3* targetPos, glm::vec3 offset = glm::vec3(0.0f, 6.0f, 0.0f), float dist = 15.0f) {
         this->Mode = CameraMode::POV_LOCKED;
         this->TargetPosition = targetPos;
         this->POVOffset = offset;
+        this->desiredDistance = dist;
+        this->currentDistance = dist;
     }
+
+    // Call this after character movement to handle camera collision
+    void HandleCollision(const PG2::PhysicsEngine& physics);
 
     // Detach and return to free fly mode
     void Detach() {

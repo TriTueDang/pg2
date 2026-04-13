@@ -18,6 +18,7 @@
 #include <memory>
 
 #include "camera.hpp"
+#include "Physics.hpp"
 
 // Light data structures
 struct DirectionalLight {
@@ -93,6 +94,8 @@ private:
     GLFWwindow* window = nullptr;
 
     std::shared_ptr<ShaderProgram> shader_prog;
+    std::shared_ptr<ShaderProgram> waypoint_shader;
+    std::shared_ptr<Model> waypoint_model;
     std::shared_ptr<Model> city_model;
     std::shared_ptr<Model> player_model;
     std::shared_ptr<Model> weapon_model;
@@ -113,6 +116,8 @@ private:
     bool is_moving = false;
     float shoot_anim_time = 0.0f;
     glm::vec3 playerPos = glm::vec3(-121.64f, -218.70f, 63.23f);
+    glm::vec3 weapon_offset{ 1.15f, 3.6f, 2.4f };
+    glm::vec3 weapon_rotation{ 0.0f, 180.0f, 90.0f }; // Added 90 degrees to Z to stand it upright
 
     // Gameplay
     float player_health = 100.0f;
@@ -120,27 +125,32 @@ private:
     const float bandit_chase_dist = 50.0f;
     const float bandit_attack_dist = 4.0f;
     const float bandit_damage_rate = 30.0f; // health per second
-    const float bandit_speed = 4.0f;
+    const float bandit_speed = 8.0f;
+
 
     // Physics
     float velocity_y = 0.0f;
     bool is_on_ground = false;
     const float gravity = -25.0f;
-    const float jump_force = 10.0f;
+    const float jump_force = 18.0f;
 
-    // Collision Grid
-    struct Grid {
-        std::vector<std::vector<Model::Triangle>> cells;
-        glm::vec2 min_bound, max_bound;
-        int resolution = 200;
-        float cell_size_x, cell_size_z;
-    } collision_grid;
+    // BVH Physics Engine
+    PG2::PhysicsEngine physics;
+    glm::vec3 last_safe_pos = glm::vec3(-121.64f, -218.70f, 63.23f);
 
-    void build_collision_grid();
-    float get_ground_height(glm::vec3 pos);
+    void build_physics();
+    float get_ground_height(glm::vec3 pos, float ray_depth = 500.0f);
+
     void spawn_bandit_wave(int count);
+    void spawn_whiskey_pickups();
+    std::vector<int> bandit_health;
 
     // Gameplay Objects
+    enum class AIState { CHASE, SEEK_COVER, PATROL, SHOOTING };
+    std::vector<AIState> bandit_states;
+    std::vector<glm::vec3> bandit_target_positions;
+    std::vector<float> bandit_state_timers;
+
     int wave_number = 1;
     int frame_count = 0;
     struct Dynamite {
@@ -149,16 +159,32 @@ private:
         float timer = 2.0f;
         bool on_ground = false;
     };
+    int score = 0;
+    std::vector<float> bandit_shoot_timers;
     std::vector<Dynamite> active_dynamites;
+
+
     std::shared_ptr<Model> dynamite_model;
     std::shared_ptr<Model> bandit_base_model;
     std::vector<float> bandit_throw_timers;
+    std::vector<float> bandit_velocities_y;
+    std::vector<glm::vec3> bandit_safe_positions;
 
     struct Bullet {
         glm::vec3 position;
         glm::vec3 velocity;
         float life = 3.0f;
+        bool isFromPlayer = true;
     };
+
+    struct WhiskeyPickup {
+        glm::vec3 position;
+        float rotation = 0.0f;
+        bool active = true;
+    };
+    std::vector<WhiskeyPickup> whiskey_pickups;
+    std::shared_ptr<Model> whiskey_model;
+
     std::vector<Bullet> active_bullets;
     std::shared_ptr<Model> bullet_model;
 

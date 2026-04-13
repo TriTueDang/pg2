@@ -29,41 +29,39 @@ cv::Mat Texture::load_image(const std::filesystem::path& path) {
     return image;
 }
 
-Texture::Texture(const std::filesystem::path & path, Interpolation interpolation) : Texture{ load_image(path), interpolation } {}
-
-Texture::Texture(const glm::vec3 & vec) : Texture{ cv::Mat{1, 1, CV_8UC3, cv::Scalar{vec.b * 255.0f, vec.g * 255.0f, vec.r * 255.0f}}, Interpolation::nearest } {}
-
-Texture::Texture(const glm::vec4 & vec) : Texture{ cv::Mat{1, 1, CV_8UC4, cv::Scalar{vec.b * 255.0f, vec.g * 255.0f, vec.r * 255.0f, vec.a * 255.0f}}, Interpolation::nearest } {}
-
-Texture::Texture(cv::Mat const& image, Interpolation interpolation)
+Texture::Texture(cv::Mat const& image, Interpolation interpolation, bool flip)
 {
     if (image.empty()) {
         throw std::runtime_error{ "the input image is empty" };
     }
 
-    cv::Mat flipped;
-    cv::flip(image, flipped, 0);
+    cv::Mat processed;
+    if (flip) {
+        cv::flip(image, processed, 0);
+    } else {
+        processed = image;
+    }
 
-    if (flipped.depth() != CV_8U) {
-        flipped.convertTo(flipped, CV_8U, flipped.depth() == CV_16U ? 1.0 / 256.0 : 1.0);
+    if (processed.depth() != CV_8U) {
+        processed.convertTo(processed, CV_8U, processed.depth() == CV_16U ? 1.0 / 256.0 : 1.0);
     }
 
     glCreateTextures(GL_TEXTURE_2D, 1, &name_);
 
-    switch (flipped.type()) {
+    switch (processed.type()) {
     case CV_8UC1:
-        glTextureStorage2D(name_, 1, GL_R8, flipped.cols, flipped.rows);
-        glTextureSubImage2D(name_, 0, 0, 0, flipped.cols, flipped.rows, GL_RED, GL_UNSIGNED_BYTE, flipped.data);
+        glTextureStorage2D(name_, 1, GL_R8, processed.cols, processed.rows);
+        glTextureSubImage2D(name_, 0, 0, 0, processed.cols, processed.rows, GL_RED, GL_UNSIGNED_BYTE, processed.data);
         glTextureParameteri(name_, GL_TEXTURE_SWIZZLE_G, GL_RED);
         glTextureParameteri(name_, GL_TEXTURE_SWIZZLE_B, GL_RED);
         break;
     case CV_8UC3:
-        glTextureStorage2D(name_, 1, GL_RGB8, flipped.cols, flipped.rows);
-        glTextureSubImage2D(name_, 0, 0, 0, flipped.cols, flipped.rows, GL_BGR, GL_UNSIGNED_BYTE, flipped.data);
+        glTextureStorage2D(name_, 1, GL_RGB8, processed.cols, processed.rows);
+        glTextureSubImage2D(name_, 0, 0, 0, processed.cols, processed.rows, GL_BGR, GL_UNSIGNED_BYTE, processed.data);
         break;
     case CV_8UC4:
-        glTextureStorage2D(name_, 1, GL_RGBA8, flipped.cols, flipped.rows);
-        glTextureSubImage2D(name_, 0, 0, 0, flipped.cols, flipped.rows, GL_BGRA, GL_UNSIGNED_BYTE, flipped.data);
+        glTextureStorage2D(name_, 1, GL_RGBA8, processed.cols, processed.rows);
+        glTextureSubImage2D(name_, 0, 0, 0, processed.cols, processed.rows, GL_BGRA, GL_UNSIGNED_BYTE, processed.data);
         break;
     default:
         throw std::runtime_error{ "unsupported number of channels or channel depth in texture" };
@@ -74,6 +72,12 @@ Texture::Texture(cv::Mat const& image, Interpolation interpolation)
     glTextureParameteri(name_, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTextureParameteri(name_, GL_TEXTURE_WRAP_T, GL_REPEAT);
 }
+
+Texture::Texture(const glm::vec3 & vec) : Texture{ cv::Mat{1, 1, CV_8UC3, cv::Scalar{vec.b * 255.0f, vec.g * 255.0f, vec.r * 255.0f}}, Interpolation::nearest, false } {}
+
+Texture::Texture(const glm::vec4 & vec) : Texture{ cv::Mat{1, 1, CV_8UC4, cv::Scalar{vec.b * 255.0f, vec.g * 255.0f, vec.r * 255.0f, vec.a * 255.0f}}, Interpolation::nearest, false } {}
+
+Texture::Texture(const std::filesystem::path & path, Interpolation interpolation, bool flip) : Texture{ load_image(path), interpolation, flip } {}
 
 Texture::~Texture() {
     if (name_ != 0 && name_ != ckboard_) {

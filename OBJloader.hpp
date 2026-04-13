@@ -6,6 +6,11 @@
 
 #include "assets.hpp"
 
-bool loadOBJ(const std::filesystem::path& filename,
-	         std::vector <Vertex> & vertices,
-	         std::vector <GLuint>& indices);
+struct MeshData {
+    std::string name;
+    std::vector<Vertex> vertices;
+    std::vector<GLuint> indices;
+};
+
+std::vector<MeshData> loadOBJ(const std::filesystem::path& filename);
+

@@ -40,6 +40,8 @@ set(PROJECT_SOURCES
     Texture.cpp
     Texture.hpp
     camera.hpp
+    Physics.cpp
+    Physics.hpp
 )
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})

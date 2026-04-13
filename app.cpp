@@ -322,34 +322,34 @@ void App::init_assets(void) {
     shader_prog = ShaderProgram::from_files("shader.vert", "shader.frag");
     
     // Load textures
-    auto rango_tex = std::make_shared<Texture>("assets/rango/source/tex_65.png");
+    auto rango_tex = std::make_shared<Texture>("assets/rango/source/tex_65.png", Texture::Interpolation::linear_mipmap_linear, true); // Re-enabled flip
     auto revolver_tex = std::make_shared<Texture>("assets/38-special-revolver/textures/rev_d.tga.png");
     auto bullet_tex = std::make_shared<Texture>("assets/9mm-bullet/textures/Bullet Normal.png");
     auto city_tex = std::make_shared<Texture>("assets/chicken-gun-western-reupload/textures/PolygonWestern_Texture_01_A.png");
     auto bandit_tex = std::make_shared<Texture>("assets/bobrito-bandito-game-ready-3d-model-free/textures/Costume_Base_color.png");
     auto dynamite_tex = std::make_shared<Texture>("assets/dynamite/textures/Dynamite_Black_Dm.png");
+    auto whiskey_tex = std::make_shared<Texture>("assets/Whiskey/material12.png");
 
     // Load City
     try {
         city_model = std::make_shared<Model>("assets/chicken-gun-western-reupload/source/western.obj", shader_prog, city_tex);
-        city_model->scale = glm::vec3(0.05f); // Increased default scale
+        city_model->scale = glm::vec3(0.05f); // Restored original scale
     } catch (...) { std::cerr << "Failed to load western city\n"; }
 
     // Load Rango (Player Model)
     try {
         player_model = std::make_shared<Model>("assets/rango/source/Rango.obj", shader_prog, rango_tex);
-        player_model->scale = glm::vec3(4.0f);
+        player_model->scale = glm::vec3(4.0f); // Restored original scale
     } catch (...) { std::cerr << "Failed to load Rango\n"; }
 
     // Load Revolver (attached to player)
     try {
         weapon_model = std::make_shared<Model>("assets/38-special-revolver/source/rev_anim.obj.obj", shader_prog, revolver_tex);
-        weapon_model->scale = glm::vec3(0.005f); // Adjust scale for hand size
+        weapon_model->scale = glm::vec3(0.005f); // Restored original scale
     } catch (...) { std::cerr << "Failed to load revolver\n"; }
 
-    // Build collision grid for the city immediately after loading city model 
-    // to have bounds for bandit spawning
-    build_collision_grid();
+    // Build BVH physics for the city immediately after loading city model
+    build_physics();
 
     // Load Bandits
     try {
@@ -359,8 +359,13 @@ void App::init_assets(void) {
         
         bandits.clear();
         bandit_throw_timers.clear();
-        spawn_bandit_wave(wave_number);
+        spawn_bandit_wave(5); // Start with 5 bandits for challenge
     } catch (...) { std::cerr << "Failed to load bandits\n"; }
+
+
+
+
+
 
     // Load Dynamite
     try {
@@ -370,10 +375,22 @@ void App::init_assets(void) {
 
     // Load Bullet
     try {
-        // Use Dynamite model for bullets too for optimization (it's low poly)
         bullet_model = std::make_shared<Model>("assets/dynamite/source/Dynamite.obj", shader_prog, city_tex);
-        bullet_model->scale = glm::vec3(0.15f); // Increased scale for visibility
+        bullet_model->scale = glm::vec3(0.15f);
     } catch (...) { std::cerr << "Failed to load bullet model\n"; }
+
+    // Load Waypoint
+    try {
+        waypoint_shader = ShaderProgram::from_files("waypoint.vert", "waypoint.frag"); 
+        waypoint_model = std::make_shared<Model>("triangle.obj", waypoint_shader);
+        waypoint_model->scale = glm::vec3(2.5f);
+    } catch (...) { std::cerr << "Failed to load waypoint assets\n"; }
+
+    // Load Whiskey
+    try {
+        whiskey_model = std::make_shared<Model>("assets/Whiskey/MushroomPotion.obj", shader_prog, whiskey_tex);
+        whiskey_model->scale = glm::vec3(4.0f); // Increased size as requested
+    } catch (...) { std::cerr << "Failed to load whiskey model\n"; }
 
     shader_prog->use();
     shader_prog->setUniform("uTexture", 0);
@@ -456,14 +473,12 @@ int App::run(void)
 		glViewport(0, 0, width, height);
 
 		// Starting position
-		playerPos = glm::vec3(-121.64f, -215.70f, 63.23f); // Calibrated spawn point (spawn slightly higher to fall onto it)
-		float initial_ground = get_ground_height(playerPos);
-		if (initial_ground > -300.0f) playerPos.y = initial_ground; 
-		else playerPos.y = -218.70f;
+		playerPos = glm::vec3(-121.64f, -215.70f, 63.23f); 
+		float initial_ground = physics.get_ground_height(playerPos);
+		if (initial_ground > -500.0f) playerPos.y = initial_ground; 
 		
-		camera.Position = playerPos + glm::vec3(0, 8.0f, 20.0f); 
-		camera.MovementSpeed = 15.0f; // Faster movement for larger scale
-		camera.Mode = CameraMode::POV_LOCKED; // To disable internal movement but keep mouse rotation
+		camera.AttachTo(&playerPos, glm::vec3(0, 6.0f, 0), 12.0f); // Attach with offset and distance
+		camera.MovementSpeed = 20.0f; 
 		double last_frame_time = glfwGetTime();
 
 		while (!glfwWindowShouldClose(window))
@@ -478,8 +493,11 @@ int App::run(void)
 
 				ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 				ImGui::Text("FPS: %.1f", FPS);
+				ImGui::Text("SCORE: %d", score);
+				ImGui::Text("WAVE: %d", wave_number);
 				ImGui::Text("V-Sync: %s (hit V to toggle)", is_vsync_on ? "ON" : "OFF");
 				ImGui::Text("Multisample (AA): %s (hit M to toggle)", is_multisample_on ? "ON" : "OFF");
+
 				
 				// Health Bar
 				ImGui::Spacing();
@@ -493,11 +511,25 @@ int App::run(void)
 					ImGui::SetNextWindowPos(ImVec2(width / 2.0f - 100, height / 2.0f - 50));
 					ImGui::Begin("YOU DIED", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize);
 					ImGui::TextColored(ImVec4(1, 0, 0, 1), "WASTED");
-					if (ImGui::Button("RESPAWN")) {
+					if (ImGui::Button("RESPAWN (R)")) {
+						// Full Reset
 						player_health = 100.0f;
 						is_player_dead = false;
-						// Reset playerPos to start? (Optional)
+						score = 0;
+						wave_number = 1;
+						bandits.clear();
+						bandit_throw_timers.clear();
+						bandit_shoot_timers.clear();
+						bandit_velocities_y.clear();
+						bandit_states.clear();
+						bandit_target_positions.clear();
+						bandit_state_timers.clear();
+						spawn_bandit_wave(5); // Start fresh with 5
+						playerPos = glm::vec3(-121.64f, -215.70f, 63.23f);
+						velocity_y = 0.0f;
 					}
+
+
 					ImGui::End();
 				}
 
@@ -512,23 +544,7 @@ int App::run(void)
 					2.0f
 				);
 
-				ImGui::SetNextWindowPos(ImVec2(10, 200));
-				ImGui::SetNextWindowSize(ImVec2(300, 150));
-				ImGui::Begin("Debug", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-				ImGui::Text("Player X: %.2f", playerPos.x);
-				ImGui::Text("Player Y: %.2f", playerPos.y);
-				ImGui::Text("Player Z: %.2f", playerPos.z);
-				if (ImGui::SliderFloat("Manual Ground Y", &ground_height, -800.0f, 50.0f)) {
-					// playerPos.y = ground_height; // Disabled auto-override to keep physics
-				}
-				if (city_model) {
-					float current_scale = city_model->scale.x;
-					if (ImGui::SliderFloat("City Scale", &current_scale, 0.001f, 0.5f, "%.3f")) {
-						city_model->scale = glm::vec3(current_scale);
-						build_collision_grid(); // Rebuild grid when scale changes
-					}
-				}
-				ImGui::End();
+				// Debug window removed by user request
 			}
 
 			//
@@ -543,7 +559,6 @@ int App::run(void)
 
 			// --- Player and Camera Logic (3rd Person) ---
 			
-			// Move playerPos instead of camera
 			glm::vec3 moveDir(0.0f);
 			if (!is_player_dead) {
 				if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) moveDir += camera.Front;
@@ -553,91 +568,138 @@ int App::run(void)
 			}
 			
 			is_moving = false;
+			glm::vec3 movement_delta(0.0f);
 			if (glm::length(moveDir) > 0.0f) {
-				moveDir.y = 0.0f; // Don't move up/down
-				if (glm::length(moveDir) > 0.0f) { // Re-check after zeroing Y
-					glm::vec3 nextPos = playerPos + glm::normalize(moveDir) * (float)(camera.MovementSpeed * delta_t);
-					float nextGround = get_ground_height(nextPos);
-					
-					// Wall collision: only move if the height difference is small (step height)
-					if (nextGround - playerPos.y < 2.0f) { 
-						playerPos = nextPos;
-						is_moving = true;
-					}
+				moveDir.y = 0.0f; 
+				if (glm::length(moveDir) > 0.0f) {
+					movement_delta = glm::normalize(moveDir) * (float)(camera.MovementSpeed * delta_t);
+					is_moving = true;
 				}
 			}
 
-			// Gravity and Physics
-			velocity_y += gravity * delta_t;
-			playerPos.y += velocity_y * delta_t;
+			// Integrated Physics Update for Player
+			auto kcc = physics.update_character(
+				playerPos, 
+				movement_delta, 
+				velocity_y, 
+				gravity, 
+				8.0f, // Higher step height for stairs
+				0.6f, // Smaller radius for narrow steps
+				delta_t
+			);
 
-			float current_ground = get_ground_height(playerPos);
-			if (playerPos.y <= current_ground) {
-				playerPos.y = current_ground;
-				velocity_y = 0.0f;
-				is_on_ground = true;
-			} else {
-				is_on_ground = false;
-			}
+			playerPos = kcc.new_position;
+			velocity_y = kcc.new_velocity_y;
+			is_on_ground = kcc.is_on_ground;
 
-			// Safety floor check: if we fall somehow, snap back
-			if (playerPos.y < -300.0f) {
-				playerPos.y = -218.70f;
+			// Handle Camera Collision and Positioning
+			camera.HandleCollision(physics);
+
+			// Safety floor check: if we fall somehow, snap back. 
+			// Threshold increased to avoid false positives from the new robust KCC.
+			if (playerPos.y < -1500.0f) {
+				playerPos = glm::vec3(-121.64f, -215.70f, 63.23f);
 				velocity_y = 0;
-				is_on_ground = true;
 			}
 			
 			// Update bandit heights and implement AI
 			for (size_t i = 0; i < bandits.size(); ++i) {
 				auto& bandit = bandits[i];
 				
-				// Optimization: Only check height every 10 frames or if moving
 				if (frame_count % 10 == 0) {
-					bandit->pivot_position.y = get_ground_height(bandit->pivot_position);
+					float bg = physics.get_ground_height(bandit->pivot_position, 30.0f);
+					if (bg > -500.0f) bandit->pivot_position.y = bg;
 				}
 
 				float dist = glm::distance(playerPos, bandit->pivot_position);
 				
-				// Chase AI - only move if too far away to throw
-				if (dist > 35.0f && !is_player_dead) {
-					glm::vec3 dir = glm::normalize(playerPos - bandit->pivot_position);
-					dir.y = 0; // Keep on ground XZ
-					bandit->pivot_position += dir * (bandit_speed * delta_t);
-					bandit->pivot_position.y = get_ground_height(bandit->pivot_position);
-				}
+				// --- SMARTER AI STATE MACHINE ---
+				if (i < bandit_states.size()) {
+					bandit_state_timers[i] -= delta_t;
+					
+					// Transitions
+					if (bandit_states[i] == AIState::CHASE && (bandit_state_timers[i] <= 0 || dist < 12.0f)) {
+						bool found_cover = false;
+						for (int attempt = 0; attempt < 8; ++attempt) {
+							float angle = (float)(rand() % 360) * 0.0174f;
+							float d_cover = 10.0f + (float)(rand() % 15);
+							glm::vec3 candidate = bandit->pivot_position + glm::vec3(cos(angle) * d_cover, 0, sin(angle) * d_cover);
+							auto ray_hit = physics.raycast(candidate + glm::vec3(0, 5, 0), glm::normalize(playerPos - candidate), glm::distance(candidate, playerPos));
+							if (ray_hit.hit) {
+								bandit_target_positions[i] = candidate;
+								bandit_states[i] = AIState::SEEK_COVER;
+								bandit_state_timers[i] = 10.0f;
+								found_cover = true;
+								break;
+							}
+						}
+						bandit_state_timers[i] = found_cover ? 10.0f : 2.0f;
+					} else if (bandit_states[i] == AIState::SEEK_COVER) {
+						if (glm::distance(bandit->pivot_position, bandit_target_positions[i]) < 2.5f || bandit_state_timers[i] <= 0) {
+							bandit_states[i] = AIState::SHOOTING;
+							bandit_state_timers[i] = 4.0f + (float)(rand() % 5);
+						}
+					} else if (bandit_states[i] == AIState::SHOOTING && (bandit_state_timers[i] <= 0 || dist < 8.0f)) {
+						bandit_states[i] = AIState::CHASE;
+						bandit_state_timers[i] = 6.0f + (float)(rand() % 6);
+					}
 
-				// Dynamite AI
-				if (dist < 50.0f && dist > 5.0f && !is_player_dead) {
-					bandit_throw_timers[i] -= delta_t;
-					if (bandit_throw_timers[i] <= 0) {
-						// Throw dynamite
-						Dynamite d;
-						d.position = bandit->pivot_position + glm::vec3(0, 5.0f, 0);
-						glm::vec3 dir = glm::normalize(playerPos - d.position);
-						d.velocity = dir * 25.0f + glm::vec3(0, 10.0f, 0); // Upward arc
-						active_dynamites.push_back(d);
-						bandit_throw_timers[i] = bandit_throw_cooldown;
+					// Movement
+					glm::vec3 banditMoveDir(0.0f);
+					if (bandit_states[i] == AIState::CHASE && dist > 15.0f) {
+						glm::vec3 baseDir = glm::normalize(playerPos - bandit->pivot_position);
+						glm::vec3 sideDir = glm::vec3(-baseDir.z, 0.0f, baseDir.x);
+						float sideInfluence = sin((float)now * 4.0f + (float)i) * 0.8f;
+						banditMoveDir = glm::normalize(baseDir + sideDir * sideInfluence);
+					} else if (bandit_states[i] == AIState::SEEK_COVER) {
+						banditMoveDir = glm::normalize(bandit_target_positions[i] - bandit->pivot_position);
+					}
+
+					if (glm::length(banditMoveDir) > 0.01f) {
+						float b_step = 7.0f; 
+						auto banditKcc = physics.update_character(bandit->pivot_position, banditMoveDir * (bandit_speed * delta_t), bandit_velocities_y[i], gravity, b_step, 0.6f, delta_t);
+						bandit->pivot_position = banditKcc.new_position;
+						bandit_velocities_y[i] = banditKcc.new_velocity_y;
 					}
 				}
 
-				// Melee attack removed as requested
+				if (!is_player_dead) {
+					// Attacks
+					if (dist < 50.0f && dist > 10.0f) {
+						bandit_throw_timers[i] -= delta_t;
+						if (bandit_throw_timers[i] <= 0) {
+							Dynamite d; d.position = bandit->pivot_position + glm::vec3(0, 5, 0); 
+							d.velocity = glm::normalize(playerPos - d.position) * 25.0f + glm::vec3(0, 10, 0); 
+							active_dynamites.push_back(d); bandit_throw_timers[i] = 4.0f + (float)(rand() % 2);
+						}
+					}
+					if (dist < 100.0f) {
+						bandit_shoot_timers[i] -= delta_t;
+						if (bandit_shoot_timers[i] <= 0) {
+							Bullet b; b.position = bandit->pivot_position + glm::vec3(0, 6, 0);
+							b.velocity = glm::normalize(playerPos + glm::vec3(0, 4, 0) - b.position) * 80.0f;
+							b.life = 2.0f; b.isFromPlayer = false; active_bullets.push_back(b);
+							bandit_shoot_timers[i] = 2.0f + (float)(rand() % 3);
+						}
+					}
+				}
 			}
+
 
 			// Update Dynamites
 			for (auto it = active_dynamites.begin(); it != active_dynamites.end(); ) {
 				if (!it->on_ground) {
 					glm::vec3 nextPos = it->position + it->velocity * delta_t;
-					float nextGround = get_ground_height(nextPos);
-					
-					// Wall collision: if something is suddenly high in front of it
-					if (nextGround > it->position.y + 0.5f) {
-						it->timer = 0; // Detonate at wall
+					// Wall/Ground collision for dynamites using raycast
+					auto hit = physics.raycast(it->position, it->velocity, glm::length(it->velocity * delta_t));
+					if (hit.hit) {
+						it->timer = 0; // Detonate on impact with wall/ceiling
 					}
 					
 					it->velocity.y += gravity * delta_t;
 					it->position += it->velocity * delta_t;
 
-					float ground = get_ground_height(it->position);
+					float ground = physics.get_ground_height(it->position, 2.0f);
 					if (it->position.y < ground) {
 						it->position.y = ground;
 						it->velocity = glm::vec3(0); // Stop at ground
@@ -661,43 +723,79 @@ int App::run(void)
 
 			// Update Bullets
 			for (auto it = active_bullets.begin(); it != active_bullets.end(); ) {
-				glm::vec3 nextPos = it->position + it->velocity * delta_t;
-				float nextGround = get_ground_height(nextPos);
+				// Wall/Ground collision for bullets using raycast
+				float dist_step = glm::length(it->velocity * delta_t);
+				auto hit = physics.raycast(it->position, it->velocity, dist_step);
 				
-				// Wall/Ground collision for bullets
-				if (nextGround > it->position.y + 0.1f) {
+				if (hit.hit) {
 					it = active_bullets.erase(it);
 					continue;
 				}
 				
-				it->position = nextPos;
+				it->position += it->velocity * delta_t;
 				it->life -= delta_t;
 
-				bool hit = false;
-				// Collision with bandits
-				for (size_t i = 0; i < bandits.size(); ++i) {
-					float dist = glm::distance(it->position, bandits[i]->pivot_position + glm::vec3(0, 5.0f, 0));
-					if (dist < 3.0f) { // Collision radius
-						bandits.erase(bandits.begin() + i);
-						if (i < bandit_throw_timers.size()) {
-							bandit_throw_timers.erase(bandit_throw_timers.begin() + i);
+				bool has_collided = false;
+				// Collision with bandits (ONLY if bullet is from player)
+				for (size_t i = 0; i < bandits.size() && it->isFromPlayer; ++i) {
+
+					// Bandit center height is roughly 4-6 units
+					float dist = glm::distance(it->position, bandits[i]->pivot_position + glm::vec3(0, 4.0f, 0));
+					if (dist < 4.0f) { 
+						bandit_health[i]--;
+						if (bandit_health[i] <= 0) {
+							bandits.erase(bandits.begin() + i);
+							if (i < bandit_throw_timers.size()) bandit_throw_timers.erase(bandit_throw_timers.begin() + i);
+							if (i < bandit_shoot_timers.size()) bandit_shoot_timers.erase(bandit_shoot_timers.begin() + i);
+							if (i < bandit_velocities_y.size()) bandit_velocities_y.erase(bandit_velocities_y.begin() + i);
+							if (i < bandit_states.size()) bandit_states.erase(bandit_states.begin() + i);
+							if (i < bandit_target_positions.size()) bandit_target_positions.erase(bandit_target_positions.begin() + i);
+							if (i < bandit_state_timers.size()) bandit_state_timers.erase(bandit_state_timers.begin() + i);
+							if (i < bandit_health.size()) bandit_health.erase(bandit_health.begin() + i);
+							
+							score += 100; // Points!
 						}
-						hit = true;
+						has_collided = true;
 						break;
 					}
 				}
 
-				if (hit || it->life <= 0) {
+				// Collision with player (only if bullet is NOT from player)
+				if (!has_collided && !it->isFromPlayer) {
+					float distToPlayer = glm::distance(it->position, playerPos + glm::vec3(0, 5.0f, 0));
+					if (distToPlayer < 5.0f) {
+						player_health -= 5.0f; // Take damage
+						if (player_health <= 0) is_player_dead = true;
+						has_collided = true;
+					}
+				}
+
+				if (has_collided || it->life <= 0) {
 					it = active_bullets.erase(it);
 				} else {
 					++it;
 				}
+
 			}
 
-			// Wave progression
-			if (bandits.empty() && !is_player_dead) {
+			// Wave progression: spawn new wave when only 1 or 0 bandits remain
+			if (bandits.size() <= 1 && !is_player_dead) {
 				wave_number++;
-				spawn_bandit_wave(wave_number);
+				spawn_bandit_wave(3 + wave_number); // Scale up with wave number
+			}
+
+			// Whiskey logic: rotation and collision
+			for (auto& wp : whiskey_pickups) {
+				if (!wp.active) continue;
+				wp.rotation += delta_t * 90.0f; // 90 deg/sec
+				wp.position.y += sin(glfwGetTime() * 2.0f) * 0.01f; // Bobbing effect
+				
+				float d = glm::distance(playerPos, wp.position);
+				if (d < 5.0f) {
+					player_health = std::min(100.0f, player_health + 25.0f);
+					wp.active = false;
+					std::cout << "Healed! Health: " << player_health << "\n";
+				}
 			}
 
 			// Update Frame Count for optimization
@@ -709,52 +807,58 @@ int App::run(void)
 				is_on_ground = false;
 			}
 
-			// Walking animation (procedural bobbing and swaying)
+			// Walking animation (procedural bobbing)
 			float bobbing = 0.0f;
-			float sway = 0.0f;
 			if (is_moving && is_on_ground) {
 				walk_anim_time += delta_t * 12.0f; // Faster animation
 				bobbing = sin(walk_anim_time) * 0.15f; // More bobbing
-				sway = sin(walk_anim_time * 0.5f) * 12.0f; // More sway
 			} else if (is_on_ground) {
 				walk_anim_time += delta_t * 2.5f;
 				bobbing = sin(walk_anim_time) * 0.02f; 
-				sway = 0.0f;
 			}
 
 			// Adjusting player model (Rango)
 			if (player_model) {
-				// Offset SIGNIFICANTLY (waist-deep fix)
-				player_model->pivot_position = playerPos + glm::vec3(0, 7.5f, 0);
+				player_model->pivot_position = playerPos; // Position exactly on ground
 				player_model->pivot_position.y += bobbing; 
 				player_model->eulerAngles.y = camera.Yaw + 90.0f;
-				player_model->eulerAngles.z = sway; // Apply swaying tilt
+				player_model->eulerAngles.z = 0.0f; 
+
+				// Procedural Leg Animation
+				if (is_moving && is_on_ground) {
+					float leg_swing = sin(walk_anim_time * 2.0f) * 25.0f;
+					if (player_model->meshes.size() > 2) {
+						player_model->meshes[1].eulerAngles.x = leg_swing;
+						player_model->meshes[2].eulerAngles.x = -leg_swing;
+					}
+				} else {
+					if (player_model->meshes.size() > 2) {
+						player_model->meshes[1].eulerAngles.x = 0;
+						player_model->meshes[2].eulerAngles.x = 0;
+					}
+				}
 			}
 
-			// Update weapon position (attach to player hand area)
+			// Update weapon position
 			if (weapon_model && player_model) {
-				// Offset scaled for Rango scale 4.0
-				weapon_model->pivot_position = player_model->pivot_position + camera.Right * 1.2f + camera.Up * 3.5f + camera.Front * 1.5f;
-				weapon_model->eulerAngles.y = camera.Yaw + 180.0f;
-				weapon_model->eulerAngles.x = -camera.Pitch;
-				weapon_model->eulerAngles.z = player_model->eulerAngles.z; // Follow sway
+				// Use tunable offsets
+				weapon_model->pivot_position = player_model->pivot_position + camera.Right * weapon_offset.x + camera.Up * weapon_offset.y + camera.Front * weapon_offset.z;
 				
+				// Standard rotation based on camera
+				weapon_model->eulerAngles.y = camera.Yaw + weapon_rotation.y;
+				weapon_model->eulerAngles.x = -camera.Pitch + weapon_rotation.x;
+				weapon_model->eulerAngles.z = weapon_rotation.z; 
+
 				if (shoot_anim_time > 0.0f) {
 					weapon_model->eulerAngles.x += sin(shoot_anim_time * 15.0f) * 10.0f;
 					shoot_anim_time -= delta_t;
 				}
 			}
 
-			// Position camera behind player
-			glm::vec3 idealCameraPos = playerPos + (-camera.Front * 18.0f + camera.Up * 8.0f);
-			
-			// Camera collision: if ideal pos is underground or inside a building
-			float camGround = get_ground_height(idealCameraPos);
-			if (idealCameraPos.y < camGround + 2.0f) {
-				// Slide camera closer to player if blocked
-				idealCameraPos = playerPos + (-camera.Front * 5.0f + camera.Up * 4.0f); 
-			}
-			camera.Position = idealCameraPos;
+			// Camera positioning is now fully handled by camera.HandleCollision(physics)
+			// which is called earlier in the loop (line 603).
+
+
 
 			// Orient bandits towards player
 			for (auto& bandit : bandits) {
@@ -830,11 +934,9 @@ int App::run(void)
 
 		// Draw bandits
 			for (auto& bandit : bandits) {
-				glm::vec3 original_pos = bandit->pivot_position;
-				bandit->pivot_position.y += 5.0f; // Increased rendering offset
 				bandit->draw();
-				bandit->pivot_position = original_pos; // Restore for AI
 			}
+
 
 			// Draw dynamites
 			if (dynamite_model) {
@@ -846,11 +948,22 @@ int App::run(void)
 				}
 			}
 
+			// Draw Whiskey bottles
+			if (whiskey_model) {
+				for (auto& wp : whiskey_pickups) {
+					if (!wp.active) continue;
+					whiskey_model->pivot_position = wp.position;
+					whiskey_model->eulerAngles.y = wp.rotation;
+					// Add a subtle secondary rotation for more "magic" feel
+					whiskey_model->eulerAngles.x = 15.0f * sin(glfwGetTime());
+					whiskey_model->draw();
+				}
+			}
+
 			// Draw bullets
 			if (bullet_model) {
 				for (auto& b : active_bullets) {
 					bullet_model->pivot_position = b.position;
-					// Align bullet to velocity
 					if (glm::length(b.velocity) > 0.01f) {
 						glm::vec3 dir = glm::normalize(b.velocity);
 						bullet_model->eulerAngles.y = glm::degrees(atan2(dir.x, dir.z));
@@ -858,6 +971,23 @@ int App::run(void)
 					}
 					bullet_model->draw();
 				}
+			}
+
+			// Draw Waypoints for bandits
+			if (waypoint_shader && !bandits.empty()) {
+				waypoint_shader->use();
+				waypoint_shader->setUniform("uV_m", camera.GetViewMatrix());
+				waypoint_shader->setUniform("uP_m", projection_matrix);
+				waypoint_shader->setUniform("waypointColor", glm::vec3(1.0f, 1.0f, 0.0f)); // Yellow
+				
+				for (auto& b : bandits) {
+					glm::mat4 m = glm::translate(glm::mat4(1.0f), b->pivot_position + glm::vec3(0, 15.0f, 0));
+					m = glm::rotate(m, (float)now * 2.0f, glm::vec3(0, 1, 0));
+					m = glm::scale(m, glm::vec3(2.5f)); // Make it visible
+					waypoint_shader->setUniform("uM_m", m);
+					if (waypoint_model) waypoint_model->draw();
+				}
+				shader_prog->use();
 			}
 
 			// Draw weapon (last to be on top?)
@@ -963,7 +1093,25 @@ void App::glfw_key_callback(GLFWwindow* window, int key, int scancode, int actio
 		case GLFW_KEY_F:
 			this_inst->toggle_fullscreen();
 			break;
+		case GLFW_KEY_R:
+			// Respawn / Restart
+			this_inst->player_health = 100.0f;
+			this_inst->is_player_dead = false;
+			this_inst->score = 0;
+			this_inst->wave_number = 1;
+			this_inst->active_bullets.clear();
+			this_inst->active_dynamites.clear();
+			this_inst->bandits.clear();
+			this_inst->bandit_throw_timers.clear();
+			this_inst->bandit_shoot_timers.clear();
+			this_inst->spawn_bandit_wave(3);
+			this_inst->playerPos = glm::vec3(-121.64f, -215.70f, 63.23f);
+			this_inst->velocity_y = 0.0f;
+			std::cout << "Game Reset!\n";
+
+			break;
 		case GLFW_KEY_G:
+
 			// Toggle ImGUI display
 			this_inst->show_imgui = !this_inst->show_imgui;
 			break;
@@ -1024,9 +1172,18 @@ if (action == GLFW_PRESS) {
 				
 				// Spawn Bullet
 				Bullet b;
-				b.position = this_inst->player_model->pivot_position + this_inst->camera.Up * 6.0f + this_inst->camera.Front * 3.0f;
+				// Bullet starts from head/shoulder level (5.0f) to match new crosshair
+				b.position = this_inst->player_model->pivot_position + this_inst->camera.Up * 5.0f + this_inst->camera.Front * 3.0f;
+
 				b.velocity = this_inst->camera.Front * 150.0f; // Fast bullet
+				b.life = 0.4f; // Drastically reduced range (60 units) to match/under-range bandits
+				b.isFromPlayer = true;
+
+
+
 				this_inst->active_bullets.push_back(b);
+
+
 
 				std::cout << "Bang!\n";
 			}
@@ -1201,110 +1358,110 @@ void App::take_screenshot() {
 	}
 }
 
-void App::build_collision_grid() {
+void App::build_physics() {
     if (!city_model) return;
-
-    auto triangles = city_model->getTriangles();
-    if (triangles.empty()) return;
-
-    // Find bounds
-    glm::vec3 min(1e10f), max(-1e10f);
-    for (const auto& tri : triangles) {
-        min = glm::min(min, glm::min(tri.v0, glm::min(tri.v1, tri.v2)));
-        max = glm::max(max, glm::max(tri.v0, glm::max(tri.v1, tri.v2)));
-    }
-
-    collision_grid.min_bound = glm::vec2(min.x, min.z);
-    collision_grid.max_bound = glm::vec2(max.x, max.z);
-    collision_grid.cells.assign(collision_grid.resolution * collision_grid.resolution, {});
-
-    collision_grid.cell_size_x = (collision_grid.max_bound.x - collision_grid.min_bound.x) / collision_grid.resolution;
-    collision_grid.cell_size_z = (collision_grid.max_bound.y - collision_grid.min_bound.y) / collision_grid.resolution;
-
-    for (const auto& tri : triangles) {
-        // Find cell range for this triangle
-        float tri_min_x = std::min({tri.v0.x, tri.v1.x, tri.v2.x});
-        float tri_max_x = std::max({tri.v0.x, tri.v1.x, tri.v2.x});
-        float tri_min_z = std::min({tri.v0.z, tri.v1.z, tri.v2.z});
-        float tri_max_z = std::max({tri.v0.z, tri.v1.z, tri.v2.z});
-
-        int start_x = std::max(0, (int)((tri_min_x - collision_grid.min_bound.x) / collision_grid.cell_size_x));
-        int end_x = std::min(collision_grid.resolution - 1, (int)((tri_max_x - collision_grid.min_bound.x) / collision_grid.cell_size_x));
-        int start_z = std::max(0, (int)((tri_min_z - collision_grid.min_bound.y) / collision_grid.cell_size_z));
-        int end_z = std::min(collision_grid.resolution - 1, (int)((tri_max_z - collision_grid.min_bound.y) / collision_grid.cell_size_z));
-
-        for (int ix = start_x; ix <= end_x; ++ix) {
-            for (int iz = start_z; iz <= end_z; ++iz) {
-                collision_grid.cells[ix + iz * collision_grid.resolution].push_back(tri);
-            }
-        }
-    }
-    std::cout << "Collision grid built with " << triangles.size() << " triangles.\n";
+    physics.build_bvh(city_model->getTriangles());
 }
 
-float App::get_ground_height(glm::vec3 pos) {
-    int ix = (int)((pos.x - collision_grid.min_bound.x) / collision_grid.cell_size_x);
-    int iz = (int)((pos.z - collision_grid.min_bound.y) / collision_grid.cell_size_z);
-
-    if (ix < 0 || ix >= collision_grid.resolution || iz < 0 || iz >= collision_grid.resolution) return -1000.0f;
-
-    const auto& cell_triangles = collision_grid.cells[ix + iz * collision_grid.resolution];
-    float max_y = -1000.0f;
-
-    for (const auto& tri : cell_triangles) {
-        // Möller-Trumbore ray-triangle intersection (ray is vertical down)
-        glm::vec3 edge1 = tri.v1 - tri.v0;
-        glm::vec3 edge2 = tri.v2 - tri.v0;
-        glm::vec3 h = glm::cross(glm::vec3(0, -1, 0), edge2);
-        float a = glm::dot(edge1, h);
-
-        if (a > -0.00001f && a < 0.00001f) continue;
-
-        float f = 1.0f / a;
-        glm::vec3 s = (pos + glm::vec3(0, 10.0f, 0)) - tri.v0; // Cast from higher up for stability
-        float u = f * glm::dot(s, h);
-
-        if (u < 0.0f || u > 1.0f) continue;
-
-        glm::vec3 q = glm::cross(s, edge1);
-        float v = f * glm::dot(glm::vec3(0, -1, 0), q);
-
-        if (v < 0.0f || u + v > 1.0f) continue;
-
-        float t = f * glm::dot(edge2, q);
-        if (t > 0.0f) {
-            float hit_y = (pos.y + 3.0f) - t;
-            if (hit_y > max_y) max_y = hit_y;
-        }
-    }
-
-    return max_y;
+float App::get_ground_height(glm::vec3 pos, float ray_depth) {
+    return physics.get_ground_height(pos, ray_depth);
 }
+
+
 void App::spawn_bandit_wave(int count) {
     if (!bandit_base_model) return;
     
+    // Clear old state for fresh wave (except score/level tracker)
+    bandit_states.clear();
+    bandit_target_positions.clear();
+    bandit_state_timers.clear();
+    bandit_health.clear();
+    bandit_throw_timers.clear();
+    bandit_shoot_timers.clear();
+    bandit_velocities_y.clear();
+    bandit_safe_positions.clear();
+    
+    // We already cleared 'bandits' vector in reset or before calling if needed, 
+    // but here we are spawning a NEW wave, so we clear it now.
+    bandits.clear();
+
     std::default_random_engine generator((unsigned)time(0));
-    std::uniform_real_distribution<float> dist_x(-600.0f, 400.0f);
-    std::uniform_real_distribution<float> dist_z(-400.0f, 600.0f);
+    std::uniform_real_distribution<float> dist_x(-150.0f, 150.0f);
+    std::uniform_real_distribution<float> dist_z(-150.0f, 150.0f);
 
     for (int i = 0; i < count; ++i) {
         auto bandit = std::make_shared<Model>(*bandit_base_model);
         
-        // Spawn far away from player
+        // Spawn around center/player within the city
         glm::vec3 spawn_pos;
         int attempts = 0;
+        float h = 0.0f;
         do {
-            spawn_pos = glm::vec3(dist_x(generator), -218.0f, dist_z(generator));
+            spawn_pos = glm::vec3(playerPos.x + dist_x(generator), -218.0f, playerPos.z + dist_z(generator));
+            h = get_ground_height(spawn_pos);
             attempts++;
-        } while (glm::distance(spawn_pos, playerPos) < 150.0f && attempts < 10);
+            
+            // Dispersion check: ensure not too close to other bandits
+            bool too_close = false;
+            for (auto const& existing : bandits) {
+                if (glm::distance(spawn_pos, existing->pivot_position) < 15.0f) {
+                    too_close = true;
+                    break;
+                }
+            }
+            if (too_close && attempts < 15) { h = -1000.0f; } // Force retry
+            
+        } while ((glm::distance(spawn_pos, playerPos) < 50.0f || h > -215.0f) && attempts < 20);
 
         bandit->pivot_position = spawn_pos;
-        bandit->pivot_position.y = get_ground_height(bandit->pivot_position);
+        bandit->pivot_position.y = h;
         if (bandit->pivot_position.y < -500.0f) bandit->pivot_position.y = -218.70f;
         
-        bandit->scale = glm::vec3(0.04f); // Increased scale
+        bandit->scale = glm::vec3(0.04f); 
         bandits.push_back(bandit);
         bandit_throw_timers.push_back(2.0f + (float)(rand() % 4)); 
+        bandit_shoot_timers.push_back(1.0f + (float)(rand() % 3));
+        bandit_velocities_y.push_back(0.0f);
+        bandit_safe_positions.push_back(bandit->pivot_position);
+
+        // State Machine Init
+        bandit_states.push_back(AIState::CHASE);
+        bandit_target_positions.push_back(bandit->pivot_position);
+        bandit_state_timers.push_back(3.0f + (float)(rand() % 10));
+        bandit_health.push_back(3); // 3 hits to kill
     }
-    std::cout << "Wave started with " << count << " bandits.\n";
+    std::cout << "Wave " << wave_number << " started with " << count << " bandits.\n";
+
+    // Refresh Whiskey pickups every wave
+    spawn_whiskey_pickups();
 }
+
+void App::spawn_whiskey_pickups() {
+    whiskey_pickups.clear();
+    std::default_random_engine generator((unsigned)time(0));
+    std::uniform_real_distribution<float> dist_pos(-250.0f, 250.0f);
+
+    int count = 3; // 3 bottles per wave
+    for (int i = 0; i < count; ++i) {
+        int attempts = 0;
+        while (attempts < 50) {
+            glm::vec3 test_pos(dist_pos(generator), -218.0f, dist_pos(generator));
+            float g = physics.get_ground_height(test_pos);
+            float c = physics.get_ceiling_height(test_pos);
+            
+            // INDOOR CHECK: Has a ceiling and the room is reasonably low
+            if (g > -500.0f && c > g && (c - g) < 20.0f) {
+                WhiskeyPickup wp;
+                glm::vec3 candidate_pos = glm::vec3(test_pos.x, g + 2.5f, test_pos.z);
+                
+                // PUSH OUT OF WALLS: resolve collision with 1.5f radius
+                wp.position = physics.resolve_sphere_collision(candidate_pos, 1.5f);
+                wp.active = true;
+                whiskey_pickups.push_back(wp);
+                break;
+            }
+            attempts++;
+        }
+    }
+}
+

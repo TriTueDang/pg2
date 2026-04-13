@@ -17,10 +17,10 @@ public:
     };
 
     Texture() = default;
-    Texture(const cv::Mat & image, Interpolation interpolation = Interpolation::linear_mipmap_linear); // default = best texture filtering
+    Texture(const cv::Mat & image, Interpolation interpolation = Interpolation::linear_mipmap_linear, bool flip = true); // default = best texture filtering
     Texture(const glm::vec3 & vec); // synthetic single-color RGB texture
     Texture(const glm::vec4 & vec); // synthetic single-color RGBA texture
-    Texture(const std::filesystem::path & path, Interpolation interpolation = Interpolation::linear_mipmap_linear);
+    Texture(const std::filesystem::path & path, Interpolation interpolation = Interpolation::linear_mipmap_linear, bool flip = true);
 
     ~Texture();
 
