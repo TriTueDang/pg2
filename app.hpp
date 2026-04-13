@@ -19,6 +19,7 @@
 
 #include "camera.hpp"
 #include "Physics.hpp"
+#include "Spline.hpp"
 
 // Light data structures
 struct DirectionalLight {
@@ -191,6 +192,32 @@ private:
     const float bandit_throw_cooldown = 4.0f;
     const float dynamite_damage = 40.0f;
     const float dynamite_radius = 12.0f;
+
+    // Spline / Path (cv09)
+    void init_path_visualization();
+    void update_path_visualization();
+
+    // Cinematic Camera (cv09)
+    enum class AppCameraState { GAMEPLAY, CINEMATIC, TRANSITION };
+    AppCameraState cam_state = AppCameraState::GAMEPLAY;
+    PG2::CatmullRomSpline intro_spline;
+    float intro_time = 0.0f;
+    float intro_duration = 6.0f; // seconds
+    
+    struct {
+        glm::vec3 start_pos, end_pos;
+        glm::vec3 start_front, end_front;
+        float progress = 0.0f;
+        float duration = 1.5f; // seconds
+    } cam_transition;
+    
+    bool is_first_wave = true;
+    float invulnerability_timer = 0.0f;
+    float wave_info_timer = 0.0f;
+
+    // Spline visual (keep VBO/VAO if needed for debug, otherwise remove)
+    GLuint path_vao = 0, path_vbo = 0;
+    int path_vertex_count = 0;
 
     // initialization helpers
     void init_imgui(void);          // set up ImGUI context and bindings

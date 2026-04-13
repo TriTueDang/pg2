@@ -422,7 +422,18 @@ void App::init_assets(void) {
 
     // Build collision grid for the city
     // Now done earlier in this function
-    // build_collision_grid();
+    // --- Cinematic Spline Initialization (cv09) ---
+    // Start far in the street, fly through to the player spawn
+    glm::vec3 player_start = glm::vec3(-121.64f, -215.70f, 63.23f);
+    float shift_x = 40.0f; // Shift to the right
+    std::vector<glm::vec3> intro_points = {
+        glm::vec3(-121.64f + shift_x, -120.0f, -400.0f), // Far, high end of street
+        glm::vec3(-121.64f + shift_x, -160.0f, -200.0f), // Descending
+        glm::vec3(-121.64f + shift_x, -200.0f, 0.0f),    // Mid-street
+        glm::vec3(-121.64f + shift_x, -210.0f, 40.0f),   // Just in front of spawn
+        player_start + glm::vec3(shift_x, 6.0f, 0)       // Final point shifted
+    };
+    intro_spline = PG2::CatmullRomSpline(intro_points, false); // Not cyclic
 }
 
 
@@ -489,12 +500,16 @@ int App::run(void)
 				ImGui_ImplGlfw_NewFrame();
 				ImGui::NewFrame();
 				ImGui::SetNextWindowPos(ImVec2(10, 10));
-				ImGui::SetNextWindowSize(ImVec2(300, 150));
+				ImGui::SetNextWindowSize(ImVec2(300, 180));
 
 				ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 				ImGui::Text("FPS: %.1f", FPS);
 				ImGui::Text("SCORE: %d", score);
 				ImGui::Text("WAVE: %d", wave_number);
+				ImGui::Text("BANDITS LEFT: %d", (int)bandits.size());
+				if (invulnerability_timer > 0.0f) {
+					ImGui::TextColored(ImVec4(0, 1, 1, 1), "SHIELD: %.1fs", invulnerability_timer);
+				}
 				ImGui::Text("V-Sync: %s (hit V to toggle)", is_vsync_on ? "ON" : "OFF");
 				ImGui::Text("Multisample (AA): %s (hit M to toggle)", is_multisample_on ? "ON" : "OFF");
 
@@ -554,13 +569,60 @@ int App::run(void)
 			float delta_t = static_cast<float>(now - last_frame_time);
 			last_frame_time = now;
 
+			// --- Camera State Machine (cv09) ---
+			if (cam_state == AppCameraState::CINEMATIC) {
+				intro_time += delta_t * (intro_spline.getMaxT() / intro_duration);
+				if (intro_time >= intro_spline.getMaxT()) {
+					// Prepare Transition
+					cam_state = AppCameraState::TRANSITION;
+					cam_transition.progress = 0.0f;
+					cam_transition.start_pos = camera.Position;
+					cam_transition.start_front = camera.Front;
+					
+					// Calculate standard target (simulate a frame of gameplay logic)
+					camera.HandleCollision(physics);
+					cam_transition.end_pos = camera.Position;
+					cam_transition.end_front = camera.Front;
+				} else {
+					camera.Position = intro_spline.evaluate(intro_time);
+					camera.Front = glm::normalize(intro_spline.evaluateTangent(intro_time));
+				}
+			} else if (cam_state == AppCameraState::TRANSITION) {
+				cam_transition.progress += delta_t / cam_transition.duration;
+				if (cam_transition.progress >= 1.0f) {
+					cam_state = AppCameraState::GAMEPLAY;
+					invulnerability_timer = 3.0f; // 3 seconds of invulnerability after intro
+				} else {
+					// Smooth interpolation
+					float t = cam_transition.progress;
+					float smooth_t = t * t * (3 - 2 * t); // Smoothstep
+					
+					// We need the gameplay target to lerp towards it
+					camera.HandleCollision(physics); 
+					cam_transition.end_pos = camera.Position;
+					cam_transition.end_front = camera.Front;
+
+					camera.Position = glm::mix(cam_transition.start_pos, cam_transition.end_pos, smooth_t);
+					camera.Front = glm::normalize(glm::mix(cam_transition.start_front, cam_transition.end_front, smooth_t));
+				}
+			}
+
+			if (invulnerability_timer > 0.0f) {
+				invulnerability_timer -= delta_t;
+			}
+			if (wave_info_timer > 0.0f) {
+				wave_info_timer -= delta_t;
+			}
+
 			//########## react to user  ##########
-			camera.ProcessInput(window, delta_t); // process keys etc.
+			if (cam_state == AppCameraState::GAMEPLAY) {
+				camera.ProcessInput(window, delta_t); // process keys etc.
+			}
 
 			// --- Player and Camera Logic (3rd Person) ---
 			
 			glm::vec3 moveDir(0.0f);
-			if (!is_player_dead) {
+			if (!is_player_dead && cam_state == AppCameraState::GAMEPLAY) {
 				if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) moveDir += camera.Front;
 				if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) moveDir -= camera.Front;
 				if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) moveDir -= camera.Right;
@@ -577,7 +639,7 @@ int App::run(void)
 				}
 			}
 
-			// Integrated Physics Update for Player
+			// Integrated Physics Update for Player (always update physics to avoid falling through floor)
 			auto kcc = physics.update_character(
 				playerPos, 
 				movement_delta, 
@@ -593,7 +655,9 @@ int App::run(void)
 			is_on_ground = kcc.is_on_ground;
 
 			// Handle Camera Collision and Positioning
-			camera.HandleCollision(physics);
+			if (cam_state == AppCameraState::GAMEPLAY) {
+				camera.HandleCollision(physics);
+			}
 
 			// Safety floor check: if we fall somehow, snap back. 
 			// Threshold increased to avoid false positives from the new robust KCC.
@@ -711,7 +775,7 @@ int App::run(void)
 				if (it->timer <= 0) {
 					// Explosion!
 					float dist = glm::distance(it->position, playerPos);
-					if (dist < dynamite_radius) {
+					if (dist < dynamite_radius && cam_state == AppCameraState::GAMEPLAY && invulnerability_timer <= 0.0f) {
 						player_health -= dynamite_damage * (1.0f - (dist / dynamite_radius));
 						if (player_health <= 0) is_player_dead = true;
 					}
@@ -763,7 +827,7 @@ int App::run(void)
 				// Collision with player (only if bullet is NOT from player)
 				if (!has_collided && !it->isFromPlayer) {
 					float distToPlayer = glm::distance(it->position, playerPos + glm::vec3(0, 5.0f, 0));
-					if (distToPlayer < 5.0f) {
+					if (distToPlayer < 5.0f && cam_state == AppCameraState::GAMEPLAY && invulnerability_timer <= 0.0f) {
 						player_health -= 5.0f; // Take damage
 						if (player_health <= 0) is_player_dead = true;
 						has_collided = true;
@@ -990,6 +1054,21 @@ int App::run(void)
 				shader_prog->use();
 			}
 
+			// --- Debug Render Intro Spline Path (cv09) ---
+			// Disabled by default (was used for debugging the street path)
+			/*
+			if (waypoint_shader && path_vao != 0) {
+				waypoint_shader->use();
+				waypoint_shader->setUniform("uV_m", camera.GetViewMatrix());
+				waypoint_shader->setUniform("uP_m", projection_matrix);
+				waypoint_shader->setUniform("waypointColor", glm::vec3(0.0f, 1.0f, 1.0f));
+				waypoint_shader->setUniform("uM_m", glm::mat4(1.0f));
+				glBindVertexArray(path_vao);
+				glDrawArrays(GL_LINE_STRIP, 0, path_vertex_count);
+				shader_prog->use();
+			}
+			*/
+
 			// Draw weapon (last to be on top?)
 			if (weapon_model) {
 				// Clear depth before drawing weapon to avoid clipping into walls? 
@@ -1168,6 +1247,10 @@ if (action == GLFW_PRESS) {
 			else {
 				// we are already inside our game: shoot!
 				auto this_inst = static_cast<App*>(glfwGetWindowUserPointer(window));
+				
+				// Block shooting during cinematic (cv09)
+				if (this_inst->cam_state != AppCameraState::GAMEPLAY) return;
+
 				this_inst->shoot_anim_time = 0.3f; // 0.3 seconds animation
 				
 				// Spawn Bullet
@@ -1208,7 +1291,9 @@ void App::cursorPositionCallback(GLFWwindow* window, double xpos, double ypos) {
         app->firstMouse = false;
     }
 
-    app->camera.ProcessMouseMovement(xpos - app->cursorLastX, (ypos - app->cursorLastY) * -1.0);
+    if (app->cam_state == AppCameraState::GAMEPLAY) {
+        app->camera.ProcessMouseMovement(xpos - app->cursorLastX, (ypos - app->cursorLastY) * -1.0);
+    }
     app->cursorLastX = xpos;
     app->cursorLastY = ypos;
 }
@@ -1371,6 +1456,16 @@ float App::get_ground_height(glm::vec3 pos, float ray_depth) {
 void App::spawn_bandit_wave(int count) {
     if (!bandit_base_model) return;
     
+    // Trigger Cinematic Intro (cv09) only on first wave
+    if (is_first_wave) {
+        cam_state = AppCameraState::CINEMATIC;
+        intro_time = 0.0f;
+        is_first_wave = false;
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); 
+    }
+    
+    wave_info_timer = 4.0f; // Show "New Wave" for 4 seconds
+    
     // Clear old state for fresh wave (except score/level tracker)
     bandit_states.clear();
     bandit_target_positions.clear();
@@ -1386,18 +1481,18 @@ void App::spawn_bandit_wave(int count) {
     bandits.clear();
 
     std::default_random_engine generator((unsigned)time(0));
-    std::uniform_real_distribution<float> dist_x(-150.0f, 150.0f);
-    std::uniform_real_distribution<float> dist_z(-150.0f, 150.0f);
+    std::uniform_real_distribution<float> dist_x(-400.0f, 400.0f);
+    std::uniform_real_distribution<float> dist_z(-400.0f, 400.0f);
 
     for (int i = 0; i < count; ++i) {
         auto bandit = std::make_shared<Model>(*bandit_base_model);
         
-        // Spawn around center/player within the city
+        // Spawn randomly across the city
         glm::vec3 spawn_pos;
         int attempts = 0;
         float h = 0.0f;
         do {
-            spawn_pos = glm::vec3(playerPos.x + dist_x(generator), -218.0f, playerPos.z + dist_z(generator));
+            spawn_pos = glm::vec3(dist_x(generator), -218.0f, dist_z(generator));
             h = get_ground_height(spawn_pos);
             attempts++;
             
@@ -1465,3 +1560,28 @@ void App::spawn_whiskey_pickups() {
     }
 }
 
+
+void App::init_path_visualization() {
+    glCreateVertexArrays(1, &path_vao);
+    glCreateBuffers(1, &path_vbo);
+
+    update_path_visualization();
+
+    glEnableVertexArrayAttrib(path_vao, 0);
+    glVertexArrayAttribFormat(path_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
+    glVertexArrayAttribBinding(path_vao, 0, 0);
+    glVertexArrayVertexBuffer(path_vao, 0, path_vbo, 0, sizeof(glm::vec3));
+}
+
+void App::update_path_visualization() {
+    std::vector<glm::vec3> visualization_points;
+    float maxT = intro_spline.getMaxT();
+    int segments = 200; // Resolution of the line
+    for (int i = 0; i <= segments; ++i) {
+        float t = (float)i / (float)segments * maxT;
+        visualization_points.push_back(intro_spline.evaluate(t));
+    }
+    path_vertex_count = (int)visualization_points.size();
+
+    glNamedBufferData(path_vbo, visualization_points.size() * sizeof(glm::vec3), visualization_points.data(), GL_STATIC_DRAW);
+}
