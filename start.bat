@@ -1,15 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: Automatické rozbalení assetů, pokud chybí
-echo Checking assets...
-for /r assets %%f in (*.obj.gz) do (
-    if not exist "%%~dpnf" (
-        echo Decompressing %%f...
-        gzip -dkf "%%f"
-    )
-)
-
 set PRESET=windows-vcpkg
 set EXE=build\pg2.exe
 
