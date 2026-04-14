@@ -33,6 +33,11 @@ CMakePresets.json
 !assets/**/*.obj
 !/*.obj
 
+# Explicitly ignore massive files (>100MB) to prevent Git push failure
+assets/chicken-gun-western-reupload/source/western.obj
+assets/9mm-bullet/source/untitled/untitled.obj
+assets/Whiskey/MushroomPotion.obj
+
 # vcpkg
 /vcpkg_installed/
 /vcpkg_installed/*
