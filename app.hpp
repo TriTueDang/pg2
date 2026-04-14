@@ -141,6 +141,7 @@ private:
     float ground_height = -218.70f;
     float walk_anim_time = 0.0f;
     bool is_moving = false;
+    bool show_post_process = true;
     float shoot_anim_time = 0.0f;
     glm::vec3 playerPos = glm::vec3(-121.64f, -218.70f, 63.23f);
     glm::vec3 weapon_offset{ 1.15f, 3.6f, 2.4f };

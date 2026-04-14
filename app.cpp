@@ -957,11 +957,15 @@ int App::run(void)
 			// RENDER: GL drawCalls
 			//
 
-            // cv07: Redirect rendering to FBO
-            glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-            glEnable(GL_DEPTH_TEST); // Ensure depth test is ON for the main pass
+            // cv07: Redirect rendering to FBO if post-processing is enabled
+            if (show_post_process) {
+                glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+            } else {
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            }
+            glEnable(GL_DEPTH_TEST); 
 
-			// Clear OpenGL canvas, both color buffer and Z-buffer
+			// Clear OpenGL canvas
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             // cv08: Draw Skybox FIRST (optimized to draw at depth 1.0)
@@ -1101,9 +1105,11 @@ int App::run(void)
             render_billboards();
 
             // cv07: Resolve FBO to screen
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            render_post_process();
+            if (show_post_process) {
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                render_post_process();
+            }
 
 			// ImGui display
 			if (show_imgui) {
@@ -1228,6 +1234,11 @@ void App::glfw_key_callback(GLFWwindow* window, int key, int scancode, int actio
 			if (this_inst->is_multisample_on) glEnable(GL_MULTISAMPLE);
 			else glDisable(GL_MULTISAMPLE);
 			std::cout << "Multisampling: " << (this_inst->is_multisample_on ? "ON" : "OFF") << "\n";
+			break;
+		case GLFW_KEY_O:
+			// Toggle Post-Processing
+			this_inst->show_post_process = !this_inst->show_post_process;
+			std::cout << "Post-processing: " << (this_inst->show_post_process ? "ON" : "OFF") << "\n";
 			break;
 		case GLFW_KEY_P:
 			// Task 2: Take Screenshot
@@ -1510,7 +1521,7 @@ void App::spawn_bandit_wave(int count) {
 
     std::default_random_engine generator((unsigned)time(0));
     std::uniform_real_distribution<float> dist_angle(0.0f, 6.283185f);
-    std::uniform_real_distribution<float> dist_radius(50.0f, 80.0f);
+    std::uniform_real_distribution<float> dist_radius(200.0f, 250.0f);
 
     for (int i = 0; i < count; ++i) {
         auto bandit = std::make_shared<Model>(*bandit_base_model);
@@ -1738,14 +1749,17 @@ void App::init_billboards() {
 void App::render_skybox() {
     if (!skybox_shader) return;
     glDepthMask(GL_FALSE);
+    glDepthFunc(GL_LEQUAL); // Important: pos.xyww depth trick requires LEQUAL or it might flicker
     skybox_shader->use();
-    skybox_shader->setUniform("view", camera.GetViewMatrix());
+    glm::mat4 view = glm::mat4(glm::mat3(camera.GetViewMatrix()));
+    skybox_shader->setUniform("view", view);
     skybox_shader->setUniform("projection", projection_matrix);
     glBindTextureUnit(0, skybox_texture);
     skybox_shader->setUniform("skybox", 0);
     
     glBindVertexArray(skybox_vao);
     glDrawArrays(GL_TRIANGLES, 0, 36);
+    glDepthFunc(GL_LESS); // Reset to default
     glDepthMask(GL_TRUE);
 }
 
