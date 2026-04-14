@@ -1,5 +1,16 @@
 #!/bin/bash
 
+# Automatické rozbalení assetů, pokud chybí
+echo "Checking assets..."
+find assets -name "*.obj.gz" | while read -r gz_file; do
+    obj_file="${gz_file%.gz}"
+    if [ ! -f "$obj_file" ]; then
+        echo "Decompressing $gz_file..."
+        gzip -dkf "$gz_file"
+    fi
+done
+
+
 # Zjištění operačního systému
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     PRESET="msvc-vcpkg"
