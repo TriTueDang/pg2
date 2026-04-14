@@ -136,6 +136,10 @@ bool App::init() {
         glEnable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE); // Ensure triangle is visible from both sides
         glEnable(GL_MULTISAMPLE); // Task 1: Enable multisampling by default
+        
+        // cv07: Enable Blending
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         // -------------------------
         // PRINT INFO
@@ -147,10 +151,15 @@ bool App::init() {
 
         std::cout << "Initialized...\n";
 
-		// init assets (models, sounds, textures, level map, ...)
-		init_assets();
+        // init assets (models, sounds, textures, level map, ...)
+        init_assets();
 
-		// Initialize ImGUI
+        // cv07/cv08 Inits
+        init_fbo();
+        init_skybox();
+        init_billboards();
+
+        // Initialize ImGUI
 		init_imgui();
 
 		// Initialize OpenCV (if needed)
@@ -373,11 +382,18 @@ void App::init_assets(void) {
         dynamite_model->scale = glm::vec3(0.5f);
     } catch (...) { std::cerr << "Failed to load dynamite model\n"; }
 
-    // Load Bullet
     try {
         bullet_model = std::make_shared<Model>("assets/dynamite/source/Dynamite.obj", shader_prog, city_tex);
         bullet_model->scale = glm::vec3(0.15f);
     } catch (...) { std::cerr << "Failed to load bullet model\n"; }
+
+    // Load cv07/cv08 shaders
+    try {
+        skybox_shader = ShaderProgram::from_files("skybox.vert", "skybox.frag");
+        post_process_shader = ShaderProgram::from_files("post_process.vert", "post_process.frag");
+        billboard_shader = ShaderProgram::from_files("billboard.vert", "billboard.frag");
+        billboard_tex = std::make_shared<Texture>("assets/tumbleweed.png", Texture::Interpolation::linear, true);
+    } catch (...) { std::cerr << "Failed to load cv07/cv08 shaders or assets\n"; }
 
     // Load Waypoint
     try {
@@ -941,8 +957,15 @@ int App::run(void)
 			// RENDER: GL drawCalls
 			//
 
+            // cv07: Redirect rendering to FBO
+            glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+            glEnable(GL_DEPTH_TEST); // Ensure depth test is ON for the main pass
+
 			// Clear OpenGL canvas, both color buffer and Z-buffer
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            // cv08: Draw Skybox FIRST (optimized to draw at depth 1.0)
+            render_skybox();
 
 			// Time-based color animation
 			float tri_r = (float)sin(now) * 0.5f + 0.5f;
@@ -1071,11 +1094,16 @@ int App::run(void)
 
 			// Draw weapon (last to be on top?)
 			if (weapon_model) {
-				// Clear depth before drawing weapon to avoid clipping into walls? 
-				// Actually might not be good for all cases, but works for HUD.
-				// glClear(GL_DEPTH_BUFFER_BIT); 
 				weapon_model->draw();
 			}
+
+            // cv08: Draw Billboards (tumbleweeds)
+            render_billboards();
+
+            // cv07: Resolve FBO to screen
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            render_post_process();
 
 			// ImGui display
 			if (show_imgui) {
@@ -1481,8 +1509,8 @@ void App::spawn_bandit_wave(int count) {
     bandits.clear();
 
     std::default_random_engine generator((unsigned)time(0));
-    std::uniform_real_distribution<float> dist_x(-400.0f, 400.0f);
-    std::uniform_real_distribution<float> dist_z(-400.0f, 400.0f);
+    std::uniform_real_distribution<float> dist_angle(0.0f, 6.283185f);
+    std::uniform_real_distribution<float> dist_radius(50.0f, 80.0f);
 
     for (int i = 0; i < count; ++i) {
         auto bandit = std::make_shared<Model>(*bandit_base_model);
@@ -1492,7 +1520,10 @@ void App::spawn_bandit_wave(int count) {
         int attempts = 0;
         float h = 0.0f;
         do {
-            spawn_pos = glm::vec3(dist_x(generator), -218.0f, dist_z(generator));
+            float angle = dist_angle(generator);
+            float radius = dist_radius(generator);
+            spawn_pos = playerPos + glm::vec3(cos(angle) * radius, 0, sin(angle) * radius);
+            
             h = get_ground_height(spawn_pos);
             attempts++;
             
@@ -1504,9 +1535,9 @@ void App::spawn_bandit_wave(int count) {
                     break;
                 }
             }
-            if (too_close && attempts < 15) { h = -1000.0f; } // Force retry
+            if (too_close) h = -1000.0f; // Force retry
             
-        } while ((glm::distance(spawn_pos, playerPos) < 50.0f || h > -215.0f) && attempts < 20);
+        } while ((h < -230.0f) && attempts < 50); // Relaxed city floor check
 
         bandit->pivot_position = spawn_pos;
         bandit->pivot_position.y = h;
@@ -1584,4 +1615,167 @@ void App::update_path_visualization() {
     path_vertex_count = (int)visualization_points.size();
 
     glNamedBufferData(path_vbo, visualization_points.size() * sizeof(glm::vec3), visualization_points.data(), GL_STATIC_DRAW);
+}
+
+void App::init_fbo() {
+    glCreateFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+    // Color texture
+    glCreateTextures(GL_TEXTURE_2D, 1, &fbo_texture);
+    glTextureStorage2D(fbo_texture, 1, GL_RGB8, width, height);
+    glTextureParameteri(fbo_texture, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTextureParameteri(fbo_texture, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT0, fbo_texture, 0);
+
+    // Depth/Stencil Renderbuffer
+    glCreateRenderbuffers(1, &rbo);
+    glNamedRenderbufferStorage(rbo, GL_DEPTH24_STENCIL8, width, height);
+    glNamedFramebufferRenderbuffer(fbo, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+    if (glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cerr << "Framebuffer is not complete!\n";
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void App::init_skybox() {
+    float skyboxVertices[] = {
+        -1.0f,  1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f, -1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f, -1.0f,  1.0f,
+        -1.0f,  1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f
+    };
+
+    glCreateVertexArrays(1, &skybox_vao);
+    glCreateBuffers(1, &skybox_vbo);
+    glNamedBufferData(skybox_vbo, sizeof(skyboxVertices), skyboxVertices, GL_STATIC_DRAW);
+    
+    glEnableVertexArrayAttrib(skybox_vao, 0);
+    glVertexArrayAttribFormat(skybox_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
+    glVertexArrayAttribBinding(skybox_vao, 0, 0);
+    glVertexArrayVertexBuffer(skybox_vao, 0, skybox_vbo, 0, 3 * sizeof(float));
+
+    std::vector<std::string> faces = {
+        "assets/skybox/right.png", "assets/skybox/left.png",
+        "assets/skybox/top.png", "assets/skybox/bottom.png",
+        "assets/skybox/front.png", "assets/skybox/back.png"
+    };
+    skybox_texture = load_cubemap(faces);
+}
+
+GLuint App::load_cubemap(std::vector<std::string> faces) {
+    GLuint textureID;
+    glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &textureID);
+
+    for (unsigned int i = 0; i < faces.size(); i++) {
+        cv::Mat img = cv::imread(faces[i]);
+        if (!img.empty()) {
+            cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
+            // We use the older style for cubemap targets as DSA for cubemaps is slightly more verbose
+            glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, img.cols, img.rows, 0, GL_RGB, GL_UNSIGNED_BYTE, img.data);
+        } else {
+            std::cerr << "Cubemap face failed to load at path: " << faces[i] << std::endl;
+        }
+    }
+    glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    return textureID;
+}
+
+void App::init_billboards() {
+    float billboardVertices[] = {
+        -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
+        -1.0f, -1.0f, 0.0f,  0.0f, 0.0f,
+         1.0f,  1.0f, 0.0f,  1.0f, 1.0f,
+         1.0f, -1.0f, 0.0f,  1.0f, 0.0f,
+    };
+
+    glCreateVertexArrays(1, &billboard_vao);
+    glCreateBuffers(1, &billboard_vbo);
+    glNamedBufferData(billboard_vbo, sizeof(billboardVertices), billboardVertices, GL_STATIC_DRAW);
+
+    glEnableVertexArrayAttrib(billboard_vao, 0);
+    glVertexArrayAttribFormat(billboard_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
+    glVertexArrayAttribBinding(billboard_vao, 0, 0);
+
+    glEnableVertexArrayAttrib(billboard_vao, 1);
+    glVertexArrayAttribFormat(billboard_vao, 1, 2, GL_FLOAT, GL_FALSE, 3 * sizeof(float));
+    glVertexArrayAttribBinding(billboard_vao, 1, 0);
+
+    glVertexArrayVertexBuffer(billboard_vao, 0, billboard_vbo, 0, 5 * sizeof(float));
+
+    // Scatter some tumbleweeds
+    std::default_random_engine gen;
+    std::uniform_real_distribution<float> dist_xz(-300.0f, 300.0f);
+    for (int i = 0; i < 40; i++) {
+        Billboard b;
+        float x = dist_xz(gen);
+        float z = dist_xz(gen);
+        float h = get_ground_height(glm::vec3(x, 0, z));
+        if (h > -300.0f) {
+            b.position = glm::vec3(x, h + 1.5f, z);
+            b.scale = glm::vec2(2.0f + (float)(rand() % 20) * 0.1f);
+            b.tint = glm::vec3(1.0f, 0.9f, 0.8f);
+            billboards.push_back(b);
+        }
+    }
+}
+
+void App::render_skybox() {
+    if (!skybox_shader) return;
+    glDepthMask(GL_FALSE);
+    skybox_shader->use();
+    skybox_shader->setUniform("view", camera.GetViewMatrix());
+    skybox_shader->setUniform("projection", projection_matrix);
+    glBindTextureUnit(0, skybox_texture);
+    skybox_shader->setUniform("skybox", 0);
+    
+    glBindVertexArray(skybox_vao);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+    glDepthMask(GL_TRUE);
+}
+
+void App::render_billboards() {
+    if (!billboard_shader || !billboard_tex) return;
+    billboard_shader->use();
+    billboard_shader->setUniform("view", camera.GetViewMatrix());
+    billboard_shader->setUniform("projection", projection_matrix);
+    billboard_tex->bind(0);
+    billboard_shader->setUniform("billboardTexture", 0);
+
+    glBindVertexArray(billboard_vao);
+    for (const auto& b : billboards) {
+        billboard_shader->setUniform("worldPos", b.position);
+        billboard_shader->setUniform("scale", b.scale); 
+        billboard_shader->setUniform("tintColor", b.tint);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+}
+
+void App::render_post_process() {
+    if (!post_process_shader) return;
+    post_process_shader->use();
+    glBindTextureUnit(0, fbo_texture);
+    post_process_shader->setUniform("screenTexture", 0);
+    post_process_shader->setUniform("health", player_health / 100.0f);
+    post_process_shader->setUniform("time", (float)glfwGetTime());
+
+    // Main render: draw the full screen triangle
+    glDisable(GL_DEPTH_TEST);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glEnable(GL_DEPTH_TEST);
 }

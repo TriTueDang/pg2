@@ -101,6 +101,32 @@ private:
     std::shared_ptr<Model> player_model;
     std::shared_ptr<Model> weapon_model;
     std::vector<std::shared_ptr<Model>> bandits;
+    
+    // cv07 & cv08 Shaders
+    std::shared_ptr<ShaderProgram> skybox_shader;
+    std::shared_ptr<ShaderProgram> post_process_shader;
+    std::shared_ptr<ShaderProgram> billboard_shader;
+
+    // FBO (cv07)
+    GLuint fbo = 0;
+    GLuint fbo_texture = 0;
+    GLuint rbo = 0;
+
+    // Skybox (cv08)
+    GLuint skybox_vao = 0;
+    GLuint skybox_vbo = 0;
+    GLuint skybox_texture = 0;
+
+    // Billboards (cv08)
+    struct Billboard {
+        glm::vec3 position;
+        glm::vec2 scale;
+        glm::vec3 tint = glm::vec3(1.0f);
+    };
+    std::vector<Billboard> billboards;
+    std::shared_ptr<Texture> billboard_tex;
+    GLuint billboard_vao = 0;
+    GLuint billboard_vbo = 0;
 
     // Lighting
     DirectionalLight dir_light;
@@ -218,6 +244,15 @@ private:
     // Spline visual (keep VBO/VAO if needed for debug, otherwise remove)
     GLuint path_vao = 0, path_vbo = 0;
     int path_vertex_count = 0;
+
+    // cv07 & cv08 helpers
+    void init_fbo();
+    void init_skybox();
+    void init_billboards();
+    void render_skybox();
+    void render_billboards();
+    void render_post_process();
+    GLuint load_cubemap(std::vector<std::string> faces);
 
     // initialization helpers
     void init_imgui(void);          // set up ImGUI context and bindings
