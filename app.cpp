@@ -267,6 +267,9 @@ void App::init_glfw(void)
 	glfwSetMouseButtonCallback(window, glfw_mouse_button_callback);
 	glfwSetCursorPosCallback(window, cursorPositionCallback);
 	glfwSetScrollCallback(window, glfw_scroll_callback);
+
+    // Ensure width and height are initialized correctly from the start (CV requirement)
+    glfwGetFramebufferSize(window, &width, &height);
 }
 
 // ---------------------------------------------------------------------------
@@ -661,7 +664,7 @@ int App::run(void)
 				movement_delta, 
 				velocity_y, 
 				gravity, 
-				8.0f, // Higher step height for stairs
+				2.0f, // Lower step height (CV: fences are now blocked)
 				0.6f, // Smaller radius for narrow steps
 				delta_t
 			);
@@ -669,6 +672,11 @@ int App::run(void)
 			playerPos = kcc.new_position;
 			velocity_y = kcc.new_velocity_y;
 			is_on_ground = kcc.is_on_ground;
+
+			// World Border (Prevent falling off map)
+			const float border_limit = 480.0f;
+			playerPos.x = glm::clamp(playerPos.x, -border_limit, border_limit);
+			playerPos.z = glm::clamp(playerPos.z, -border_limit, border_limit);
 
 			// Handle Camera Collision and Positioning
 			if (cam_state == AppCameraState::GAMEPLAY) {
@@ -736,10 +744,26 @@ int App::run(void)
 					}
 
 					if (glm::length(banditMoveDir) > 0.01f) {
-						float b_step = 7.0f; 
+						float b_step = 2.0f; // Lower step for bandits too
 						auto banditKcc = physics.update_character(bandit->pivot_position, banditMoveDir * (bandit_speed * delta_t), bandit_velocities_y[i], gravity, b_step, 0.6f, delta_t);
 						bandit->pivot_position = banditKcc.new_position;
 						bandit_velocities_y[i] = banditKcc.new_velocity_y;
+
+						// UNSTUCK LOGIC (CV: detect terrain snag)
+						float d_moved = glm::distance(bandit->pivot_position, bandit_last_positions[i]);
+						if (frame_count % 30 == 0) { // Check periodically
+							if (d_moved < 0.2f) {
+								bandit_stuck_timers[i] += 0.5f;
+							} else {
+								bandit_stuck_timers[i] = 0.0f;
+							}
+							bandit_last_positions[i] = bandit->pivot_position;
+						}
+
+						if (bandit_stuck_timers[i] > 1.0f) {
+							bandit_velocities_y[i] = 18.0f; // Escape jump
+							bandit_stuck_timers[i] = 0.0f;
+						}
 					}
 				}
 
@@ -750,7 +774,7 @@ int App::run(void)
 						if (bandit_throw_timers[i] <= 0) {
 							Dynamite d; d.position = bandit->pivot_position + glm::vec3(0, 5, 0); 
 							d.velocity = glm::normalize(playerPos - d.position) * 25.0f + glm::vec3(0, 10, 0); 
-							active_dynamites.push_back(d); bandit_throw_timers[i] = 4.0f + (float)(rand() % 2);
+							active_dynamites.push_back(d); bandit_throw_timers[i] = 2.5f + (float)(rand() % 2); // Faster throws
 						}
 					}
 					if (dist < 100.0f) {
@@ -759,7 +783,7 @@ int App::run(void)
 							Bullet b; b.position = bandit->pivot_position + glm::vec3(0, 6, 0);
 							b.velocity = glm::normalize(playerPos + glm::vec3(0, 4, 0) - b.position) * 80.0f;
 							b.life = 2.0f; b.isFromPlayer = false; active_bullets.push_back(b);
-							bandit_shoot_timers[i] = 2.0f + (float)(rand() % 3);
+							bandit_shoot_timers[i] = 1.2f + (float)(rand() % 2); // Faster shooting
 						}
 					}
 				}
@@ -861,7 +885,22 @@ int App::run(void)
 			// Wave progression: spawn new wave when only 1 or 0 bandits remain
 			if (bandits.size() <= 1 && !is_player_dead) {
 				wave_number++;
-				spawn_bandit_wave(3 + wave_number); // Scale up with wave number
+				spawn_bandit_wave(std::min(40, 5 + wave_number * 3)); // Faster wave scaling, capped at 40 for infinite play
+			}
+
+			// Periodic Whiskey Respawn (CV: Infinite Mode recovery)
+			if (!is_player_dead) {
+				whiskey_respawn_timer += delta_t;
+				int activeCount = 0;
+				for (const auto& wp : whiskey_pickups) if (wp.active) activeCount++;
+				
+				if (whiskey_respawn_timer > 90.0f) {
+					if (activeCount < 3) {
+						spawn_single_whiskey();
+						std::cout << "[InfiniteMode] New whiskey bottle spawned for player.\n";
+					}
+					whiskey_respawn_timer = 0.0f; // Reset timer regardless to avoid spam if map is full
+				}
 			}
 
 			// Whiskey logic: rotation and collision
@@ -960,8 +999,10 @@ int App::run(void)
             // cv07: Redirect rendering to FBO if post-processing is enabled
             if (show_post_process) {
                 glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+                glViewport(0, 0, width, height); // Explicitly set viewport for FBO (CV best practice)
             } else {
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glViewport(0, 0, width, height); 
             }
             glEnable(GL_DEPTH_TEST); 
 
@@ -1107,6 +1148,7 @@ int App::run(void)
             // cv07: Resolve FBO to screen
             if (show_post_process) {
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glViewport(0, 0, width, height); // Reset viewport for screen output
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 render_post_process();
             }
@@ -1272,6 +1314,9 @@ void App::glfw_fbsize_callback(GLFWwindow* window, int width, int height) {
     //now your canvas has [0,0] in bottom left corner, and its size is [width x height]
 
     this_inst->update_projection_matrix();
+
+    // Re-initialize FBO to match new window size
+    this_inst->init_fbo();
 }
 
 void App::glfw_mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
@@ -1514,6 +1559,8 @@ void App::spawn_bandit_wave(int count) {
     bandit_shoot_timers.clear();
     bandit_velocities_y.clear();
     bandit_safe_positions.clear();
+    bandit_last_positions.clear();
+    bandit_stuck_timers.clear();
     
     // We already cleared 'bandits' vector in reset or before calling if needed, 
     // but here we are spawning a NEW wave, so we clear it now.
@@ -1560,6 +1607,8 @@ void App::spawn_bandit_wave(int count) {
         bandit_shoot_timers.push_back(1.0f + (float)(rand() % 3));
         bandit_velocities_y.push_back(0.0f);
         bandit_safe_positions.push_back(bandit->pivot_position);
+        bandit_last_positions.push_back(bandit->pivot_position);
+        bandit_stuck_timers.push_back(0.0f);
 
         // State Machine Init
         bandit_states.push_back(AIState::CHASE);
@@ -1575,30 +1624,34 @@ void App::spawn_bandit_wave(int count) {
 
 void App::spawn_whiskey_pickups() {
     whiskey_pickups.clear();
-    std::default_random_engine generator((unsigned)time(0));
+    int count = std::min(6, 2 + (int)(wave_number * 1.5f)); // Scale with wave difficulty, max 6
+    for (int i = 0; i < count; ++i) {
+        spawn_single_whiskey();
+    }
+}
+
+void App::spawn_single_whiskey() {
+    std::default_random_engine generator((unsigned)time(0) + (unsigned)whiskey_pickups.size());
     std::uniform_real_distribution<float> dist_pos(-250.0f, 250.0f);
 
-    int count = 3; // 3 bottles per wave
-    for (int i = 0; i < count; ++i) {
-        int attempts = 0;
-        while (attempts < 50) {
-            glm::vec3 test_pos(dist_pos(generator), -218.0f, dist_pos(generator));
-            float g = physics.get_ground_height(test_pos);
-            float c = physics.get_ceiling_height(test_pos);
+    int attempts = 0;
+    while (attempts < 80) {
+        glm::vec3 test_pos(dist_pos(generator), -218.0f, dist_pos(generator));
+        float g = physics.get_ground_height(test_pos);
+        float c = physics.get_ceiling_height(test_pos);
+        
+        // INDOOR CHECK: Has a ceiling and the room is reasonably low
+        if (g > -500.0f && c > g && (c - g) < 20.0f) {
+            WhiskeyPickup wp;
+            glm::vec3 candidate_pos = glm::vec3(test_pos.x, g + 2.5f, test_pos.z);
             
-            // INDOOR CHECK: Has a ceiling and the room is reasonably low
-            if (g > -500.0f && c > g && (c - g) < 20.0f) {
-                WhiskeyPickup wp;
-                glm::vec3 candidate_pos = glm::vec3(test_pos.x, g + 2.5f, test_pos.z);
-                
-                // PUSH OUT OF WALLS: resolve collision with 1.5f radius
-                wp.position = physics.resolve_sphere_collision(candidate_pos, 1.5f);
-                wp.active = true;
-                whiskey_pickups.push_back(wp);
-                break;
-            }
-            attempts++;
+            // PUSH OUT OF WALLS: resolve collision with 1.5f radius
+            wp.position = physics.resolve_sphere_collision(candidate_pos, 1.5f);
+            wp.active = true;
+            whiskey_pickups.push_back(wp);
+            return;
         }
+        attempts++;
     }
 }
 
@@ -1629,6 +1682,11 @@ void App::update_path_visualization() {
 }
 
 void App::init_fbo() {
+    // Cleanup old resources if they exist
+    if (fbo != 0) glDeleteFramebuffers(1, &fbo);
+    if (fbo_texture != 0) glDeleteTextures(1, &fbo_texture);
+    if (rbo != 0) glDeleteRenderbuffers(1, &rbo);
+
     glCreateFramebuffers(1, &fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
@@ -1637,6 +1695,9 @@ void App::init_fbo() {
     glTextureStorage2D(fbo_texture, 1, GL_RGB8, width, height);
     glTextureParameteri(fbo_texture, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTextureParameteri(fbo_texture, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // Use GL_CLAMP_TO_EDGE to avoid tiling/artifacts at edges
+    glTextureParameteri(fbo_texture, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(fbo_texture, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT0, fbo_texture, 0);
 
     // Depth/Stencil Renderbuffer

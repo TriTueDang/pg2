@@ -153,14 +153,14 @@ private:
     const float bandit_chase_dist = 50.0f;
     const float bandit_attack_dist = 4.0f;
     const float bandit_damage_rate = 30.0f; // health per second
-    const float bandit_speed = 8.0f;
+    const float bandit_speed = 16.0f;
 
 
     // Physics
     float velocity_y = 0.0f;
     bool is_on_ground = false;
     const float gravity = -25.0f;
-    const float jump_force = 18.0f;
+    const float jump_force = 15.0f;
 
     // BVH Physics Engine
     PG2::PhysicsEngine physics;
@@ -197,6 +197,8 @@ private:
     std::vector<float> bandit_throw_timers;
     std::vector<float> bandit_velocities_y;
     std::vector<glm::vec3> bandit_safe_positions;
+    std::vector<glm::vec3> bandit_last_positions;
+    std::vector<float> bandit_stuck_timers;
 
     struct Bullet {
         glm::vec3 position;
@@ -211,6 +213,8 @@ private:
         bool active = true;
     };
     std::vector<WhiskeyPickup> whiskey_pickups;
+    float whiskey_respawn_timer = 0.0f;
+    void spawn_single_whiskey();
     std::shared_ptr<Model> whiskey_model;
 
     std::vector<Bullet> active_bullets;

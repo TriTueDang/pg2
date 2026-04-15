@@ -1,15 +1,12 @@
 #version 460 core
+in vec2 TexCoords;
 out vec4 FragColor;
-
 uniform sampler2D screenTexture;
 uniform float health; // 0.0 to 1.0
 uniform float time;
 
 void main()
 {
-    ivec2 texSize = textureSize(screenTexture, 0);
-    vec2 TexCoords = gl_FragCoord.xy / vec2(texSize);
-    
     vec3 color = texture(screenTexture, TexCoords).rgb;
 
     // 1. Subtle Western Tint (Warmth)
