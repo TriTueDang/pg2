@@ -256,6 +256,7 @@ private:
     void init_billboards();
     void render_skybox();
     void render_billboards();
+    GLuint post_process_vao = 0;
     void render_post_process();
     GLuint load_cubemap(std::vector<std::string> faces);
 

@@ -140,6 +140,8 @@ bool App::init() {
         // cv07: Enable Blending
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        glCreateVertexArrays(1, &post_process_vao); // Dedicated VAO for post-processing
 
         // -------------------------
         // PRINT INFO
@@ -194,7 +196,6 @@ bool App::load_config(const std::string& filename)
     }
 
     is_vsync_on = config.value("vsync", true);
-
     return true;
 }
 
@@ -1306,17 +1307,13 @@ void App::glfw_key_callback(GLFWwindow* window, int key, int scancode, int actio
 void App::glfw_fbsize_callback(GLFWwindow* window, int width, int height) {
     // glViewport(0, 0, width, height);
 		auto this_inst = static_cast<App*>(glfwGetWindowUserPointer(window));
-    this_inst->width = width;
-    this_inst->height = height;
-
-    // set viewport
-    glViewport(0, 0, width, height);
-    //now your canvas has [0,0] in bottom left corner, and its size is [width x height]
-
-    this_inst->update_projection_matrix();
-
-    // Re-initialize FBO to match new window size
-    this_inst->init_fbo();
+	if (this_inst) {
+		this_inst->width = width;
+		this_inst->height = height;
+		glViewport(0, 0, width, height);
+		this_inst->update_projection_matrix(); // Correctly recalculates using this_inst->fov
+		this_inst->init_fbo(); // Recreate FBO with new size
+	}
 }
 
 void App::glfw_mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
@@ -1713,18 +1710,48 @@ void App::init_fbo() {
 
 void App::init_skybox() {
     float skyboxVertices[] = {
-        -1.0f,  1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f, -1.0f, -1.0f,
-         1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,  1.0f, -1.0f,
-        -1.0f, -1.0f,  1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f, -1.0f,
-        -1.0f,  1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,  1.0f,
-         1.0f, -1.0f, -1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f, -1.0f,
-        -1.0f, -1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f, -1.0f,  1.0f,
-        -1.0f,  1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f,
-        -1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,
-         1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f
+        // positions          
+        -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+        -1.0f,  1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f,  1.0f
     };
 
     glCreateVertexArrays(1, &skybox_vao);
@@ -1746,24 +1773,23 @@ void App::init_skybox() {
 
 GLuint App::load_cubemap(std::vector<std::string> faces) {
     GLuint textureID;
-    glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &textureID);
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
 
     for (unsigned int i = 0; i < faces.size(); i++) {
         cv::Mat img = cv::imread(faces[i]);
         if (!img.empty()) {
             cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
-            // We use the older style for cubemap targets as DSA for cubemaps is slightly more verbose
-            glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
             glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, img.cols, img.rows, 0, GL_RGB, GL_UNSIGNED_BYTE, img.data);
         } else {
             std::cerr << "Cubemap face failed to load at path: " << faces[i] << std::endl;
         }
     }
-    glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTextureParameteri(textureID, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
     return textureID;
 }
@@ -1810,7 +1836,8 @@ void App::init_billboards() {
 void App::render_skybox() {
     if (!skybox_shader) return;
     glDepthMask(GL_FALSE);
-    glDepthFunc(GL_LEQUAL); // Important: pos.xyww depth trick requires LEQUAL or it might flicker
+    glDisable(GL_CULL_FACE); // Important: don't cull skybox faces (it's a box with cameras inside)
+    glDepthFunc(GL_LEQUAL); // Important: pos.xyww depth trick requires LEQUAL
     skybox_shader->use();
     glm::mat4 view = glm::mat4(glm::mat3(camera.GetViewMatrix()));
     skybox_shader->setUniform("view", view);
@@ -1822,6 +1849,7 @@ void App::render_skybox() {
     glDrawArrays(GL_TRIANGLES, 0, 36);
     glDepthFunc(GL_LESS); // Reset to default
     glDepthMask(GL_TRUE);
+    glEnable(GL_CULL_FACE);
 }
 
 void App::render_billboards() {
@@ -1851,6 +1879,10 @@ void App::render_post_process() {
 
     // Main render: draw the full screen triangle
     glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE); // Ensure triangle is not culled
+    glBindVertexArray(post_process_vao); // Use dedicated/clean VAO
     glDrawArrays(GL_TRIANGLES, 0, 3);
+    
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
 }
