@@ -102,12 +102,14 @@ namespace ChickenTests {
 
         try {
             PG2::CatmullRomSpline spline(points, false);
-            // evaluate at mid-point
-            glm::vec3 mid = spline.evaluate(0.5f);
+            // evaluate at mid-point of the whole spline (between points 1 and 2)
+            // In this implementation, T is index + fraction [0.0, points.size()-1]
+            glm::vec3 mid = spline.evaluate(1.5f);
             
-            // For these linear points, mid should be around (1.5, 0, 0)
+            // For these linear points (0,0,0), (1,0,0), (2,0,0), (3,0,0), 
+            // the point at T=1.5 should be exactly (1.5, 0, 0)
             if (glm::distance(mid, glm::vec3(1.5f, 0, 0)) > 0.1f) {
-                log_error("Spline interpolation error!");
+                log_error("Spline interpolation error! Expected (1.5, 0, 0), got something else.");
                 return false;
             }
             log_info("Spline math is correct.");

@@ -106,3 +106,5 @@ ImGUI version: 1.91.5
 [FPS]65.2678     [FPS]59.9777     [FPS]59.9413     [FPS]60.0714     [FPS]59.9985     [FPS]59.997     [FPS]60.001     [FPS]59.9992     Application runtime: 9.15022 seconds
 Bye...
 [TEST]: Permission check at 1776255599
+[TEST]: Permission check at 1776255728
+[TEST]: Permission check at 1776255762
