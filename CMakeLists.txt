@@ -42,6 +42,7 @@ set(PROJECT_SOURCES
     camera.hpp
     Physics.cpp
     Physics.hpp
+    tests.cpp
 )
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})

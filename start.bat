@@ -22,13 +22,31 @@ if %ERRORLEVEL% neq 0 (
 
 cmake --build build --target pg2
 if %ERRORLEVEL% neq 0 (
-    echo Build failed!
+    echo ------------------------------------------
+    echo BUILD FAILED! Please check the errors above.
+    echo ------------------------------------------
     pause
     exit /b %ERRORLEVEL%
 )
 
+echo ------------------------------------------
+echo BUILD SUCCESSFUL!
+echo ------------------------------------------
+
 if exist %EXE% (
-    echo Running application...
+    echo Running internal tests...
+    %EXE% --test
+    if %ERRORLEVEL% neq 0 (
+        echo ------------------------------------------
+        echo TESTS FAILED! Application will not start.
+        echo ------------------------------------------
+        pause
+        exit /b %ERRORLEVEL%
+    )
+    echo TESTS PASSED!
+    echo ------------------------------------------
+    
+    echo Starting Chicken Gun Story...
     %EXE%
 ) else (
     echo Executable not found: %EXE%

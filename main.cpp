@@ -29,11 +29,18 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "app.hpp"
+#include "tests.hpp"
+
 // define our application
 App app;
 
-int main()
+int main(int argc, char* argv[])
 {
+    // Check for test flag
+    if (argc > 1 && std::string(argv[1]) == "--test") {
+        return ChickenTests::run_all_tests() ? 0 : 1;
+    }
+
     using clock = std::chrono::steady_clock;
     using seconds = std::chrono::duration<double>;
 

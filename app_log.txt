@@ -105,3 +105,4 @@ ImGUI version: 1.91.5
 [GL CALLBACK]: source = SHADER COMPILER, type = OTHER, severity = NOTIFICATION, ID = '1', message = 'Shader Stats: SGPRS: 48 VGPRS: 32 Code Size: 2132 LDS: 0 Scratch: 0 Max Waves: 16 Spilled SGPRs: 0 Spilled VGPRs: 0 PrivMem VGPRs: 0 LSOutputs: 0 HSOutputs: 0 HSPatchOuts: 0 ESOutputs: 0 GSOutputs: 0 VSOutputs: 2 PSOutputs: 0 InlineUniforms: 0 DivergentLoop: 0 (VS, W64)'
 [FPS]65.2678     [FPS]59.9777     [FPS]59.9413     [FPS]60.0714     [FPS]59.9985     [FPS]59.997     [FPS]60.001     [FPS]59.9992     Application runtime: 9.15022 seconds
 Bye...
+[TEST]: Permission check at 1776255599
