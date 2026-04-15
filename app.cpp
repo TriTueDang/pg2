@@ -445,13 +445,14 @@ void App::init_assets(void) {
     // --- Cinematic Spline Initialization (cv09) ---
     // Start far in the street, fly through to the player spawn
     glm::vec3 player_start = glm::vec3(-121.64f, -215.70f, 63.23f);
-    float shift_x = 40.0f; // Shift to the right
+    float shift_x = -85.0f; // Shift to the left
     std::vector<glm::vec3> intro_points = {
         glm::vec3(-121.64f + shift_x, -120.0f, -400.0f), // Far, high end of street
         glm::vec3(-121.64f + shift_x, -160.0f, -200.0f), // Descending
         glm::vec3(-121.64f + shift_x, -200.0f, 0.0f),    // Mid-street
         glm::vec3(-121.64f + shift_x, -210.0f, 40.0f),   // Just in front of spawn
-        player_start + glm::vec3(shift_x, 6.0f, 0)       // Final point shifted
+        player_start + glm::vec3(shift_x, 6.0f, 0),      // Stay left
+        player_start + glm::vec3(0, 6.0f, 0)             // Final turn right to Rango
     };
     intro_spline = PG2::CatmullRomSpline(intro_points, false); // Not cyclic
 }
@@ -611,7 +612,7 @@ int App::run(void)
 				cam_transition.progress += delta_t / cam_transition.duration;
 				if (cam_transition.progress >= 1.0f) {
 					cam_state = AppCameraState::GAMEPLAY;
-					invulnerability_timer = 3.0f; // 3 seconds of invulnerability after intro
+					invulnerability_timer = 10.0f; // 10 seconds of invulnerability after intro
 				} else {
 					// Smooth interpolation
 					float t = cam_transition.progress;

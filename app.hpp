@@ -233,7 +233,7 @@ private:
     AppCameraState cam_state = AppCameraState::GAMEPLAY;
     PG2::CatmullRomSpline intro_spline;
     float intro_time = 0.0f;
-    float intro_duration = 6.0f; // seconds
+    float intro_duration = 12.0f; // seconds
     
     struct {
         glm::vec3 start_pos, end_pos;
