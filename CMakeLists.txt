@@ -32,8 +32,17 @@ set(PROJECT_SOURCES
     app.cpp
     app.hpp
     ShaderProgram.cpp
+    ShaderProgram.hpp
     OBJloader.cpp
+    OBJloader.hpp
     Model.hpp
+    Mesh.hpp
+    Texture.cpp
+    Texture.hpp
+    camera.hpp
+    Physics.cpp
+    Physics.hpp
+    tests.cpp
 )
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})

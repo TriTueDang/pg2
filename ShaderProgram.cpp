@@ -19,17 +19,18 @@ ShaderProgram::ShaderProgram(const std::string & vertex_shader_code, const std::
 }
 
 GLuint ShaderProgram::getUniformLocation(const std::string & name) {
-    if (uniform_location_cache.contains(name)) {
-        return uniform_location_cache[name];
+    auto it = uniform_location_cache.find(name);
+    if (it != uniform_location_cache.end()) {
+        return it->second;
     }
 
     auto loc = glGetUniformLocation(ID, name.c_str());
     if (loc == -1) {
-        std::cerr << "No uniform with name: " << name << '\n';
-    } else {
-        uniform_location_cache[name] = loc;
+        std::cerr << "[GL] No uniform with name: " << name << " in shader " << ID << " (only reporting once)\n";
     }
-    return loc;
+    
+    uniform_location_cache[name] = (GLuint)loc;
+    return (GLuint)loc;
 }
 
 GLint ShaderProgram::getAttribLocation(const std::string & name) {
@@ -46,6 +47,10 @@ void ShaderProgram::setUniform(const std::string& name, const GLfloat val) {
 
 void ShaderProgram::setUniform(const std::string& name, const GLint val) {
     glProgramUniform1i(ID, getUniformLocation(name), val);
+}
+
+void ShaderProgram::setUniform(const std::string& name, const glm::vec2 & val) {
+    glProgramUniform2fv(ID, getUniformLocation(name), 1, glm::value_ptr(val));
 }
 
 void ShaderProgram::setUniform(const std::string& name, const glm::vec3 & val) {

@@ -29,6 +29,10 @@ CMakePresets.json
 *.obj
 *.pdb
 
+# Un-ignore 3D models in assets
+!assets/**/*.obj
+!/*.obj
+
 # vcpkg
 /vcpkg_installed/
 /vcpkg_installed/*

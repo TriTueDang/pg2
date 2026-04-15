@@ -18,7 +18,6 @@ echo "Building project using preset: $PRESET..."
 cmake --preset "$PRESET"
 if [ $? -ne 0 ]; then
     echo "Configuration failed! Cleaning build directory and retrying..."
-    # Pokud konfigurace selže (např. kvůli změně generátoru), zkusíme smazat build a znovu
     rm -rf build
     cmake --preset "$PRESET"
     if [ $? -ne 0 ]; then
@@ -27,22 +26,39 @@ if [ $? -ne 0 ]; then
     fi
 fi
 
-# Sestavení
+# Sestavení (KROK: Kontrola kompilace)
+echo "------------------------------------------"
+echo "STEP 1: COMPILATION CHECK"
+echo "------------------------------------------"
 cmake --build build --target pg2
 if [ $? -ne 0 ]; then
-    echo "Build failed!"
+    echo "------------------------------------------"
+    echo "BUILD FAILED! Please check the errors above."
+    echo "------------------------------------------"
+    exit 1
+fi
+echo "BUILD SUCCESSFUL!"
+
+# Spuštění testů (KROK: Kontrola integrity)
+echo "------------------------------------------"
+echo "STEP 2: INTEGRITY TESTS"
+echo "------------------------------------------"
+if [ -f "$EXE" ]; then
+    $EXE --test
+    if [ $? -ne 0 ]; then
+        echo "------------------------------------------"
+        echo "TESTS FAILED! Application will not start."
+        echo "------------------------------------------"
+        exit 1
+    fi
+    echo "TESTS PASSED!"
+else
+    echo "Executable not found for tests!"
     exit 1
 fi
 
-# Spuštění
-if [ -f "$EXE" ]; then
-    echo "Running application (forcing NVIDIA if available)..."
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        $EXE
-    else
-        $EXE
-    fi
-else
-    echo "Executable not found: $EXE"
-    exit 1
-fi
+echo "------------------------------------------"
+echo "STEP 3: RUNNING GAME"
+echo "------------------------------------------"
+echo "Starting Chicken Gun Story..."
+$EXE

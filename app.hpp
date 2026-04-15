@@ -17,6 +17,36 @@
 #include "Model.hpp"
 #include <memory>
 
+#include "camera.hpp"
+#include "Physics.hpp"
+#include "Spline.hpp"
+
+// Light data structures
+struct DirectionalLight {
+    glm::vec3 direction = glm::vec3(0.0f, -1.0f, -1.0f); // Light direction
+    glm::vec3 ambient = glm::vec3(0.2f, 0.2f, 0.2f);
+    glm::vec3 diffuse = glm::vec3(0.8f, 0.8f, 0.8f);
+    glm::vec3 specular = glm::vec3(1.0f, 1.0f, 1.0f);
+};
+
+struct PointLight {
+    glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 ambient = glm::vec3(0.2f, 0.2f, 0.2f);
+    glm::vec3 diffuse = glm::vec3(0.8f, 0.8f, 0.8f);
+    glm::vec3 specular = glm::vec3(1.0f, 1.0f, 1.0f);
+    float radius = 100.0f; // Attenuation radius
+};
+
+struct SpotLight {
+    glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 direction = glm::vec3(0.0f, -1.0f, 0.0f);
+    glm::vec3 ambient = glm::vec3(0.2f, 0.2f, 0.2f);
+    glm::vec3 diffuse = glm::vec3(0.8f, 0.8f, 0.8f);
+    glm::vec3 specular = glm::vec3(1.0f, 1.0f, 1.0f);
+    float cutoff = 12.5f; // Inner cone angle
+    float outer_cutoff = 17.5f; // Outer cone angle
+};
+
 class App {
 
 protected:
@@ -27,6 +57,21 @@ protected:
     glm::mat4 projection_matrix = glm::identity<glm::mat4>();
     // all objects of the scene
     std::unordered_map<std::string, Model> scene;
+
+    // Mouse control (Task 2, point 4)
+    glm::vec3 camera_front{ 0.0f, 0.0f, -1.0f };
+    float yaw = -90.0f;
+    float pitch = 0.0f;
+    float lastX = 400, lastY = 300;
+    bool firstMouse = true;
+
+    glm::mat4 view_matrix = glm::identity<glm::mat4>();
+
+    Camera camera;
+    // remember last cursor position, move relative to that in the next frame
+    double cursorLastX{ 0 };
+    double cursorLastY{ 0 };
+
 
 private:
     bool show_imgui{true};
@@ -42,16 +87,178 @@ private:
     int saved_window_width = 800;
     int saved_window_height = 600;
 
+    bool is_multisample_on = true;
+
     void toggle_fullscreen();
+    void take_screenshot();
 
     GLFWwindow* window = nullptr;
 
     std::shared_ptr<ShaderProgram> shader_prog;
-    std::shared_ptr<Model> model;
+    std::shared_ptr<ShaderProgram> waypoint_shader;
+    std::shared_ptr<Model> waypoint_model;
+    std::shared_ptr<Model> city_model;
+    std::shared_ptr<Model> player_model;
+    std::shared_ptr<Model> weapon_model;
+    std::vector<std::shared_ptr<Model>> bandits;
+    
+    // cv07 & cv08 Shaders
+    std::shared_ptr<ShaderProgram> skybox_shader;
+    std::shared_ptr<ShaderProgram> post_process_shader;
+    std::shared_ptr<ShaderProgram> billboard_shader;
+
+    // FBO (cv07)
+    GLuint fbo = 0;
+    GLuint fbo_texture = 0;
+    GLuint rbo = 0;
+
+    // Skybox (cv08)
+    GLuint skybox_vao = 0;
+    GLuint skybox_vbo = 0;
+    GLuint skybox_texture = 0;
+
+    // Billboards (cv08)
+    struct Billboard {
+        glm::vec3 position;
+        glm::vec2 scale;
+        glm::vec3 tint = glm::vec3(1.0f);
+    };
+    std::vector<Billboard> billboards;
+    std::shared_ptr<Texture> billboard_tex;
+    GLuint billboard_vao = 0;
+    GLuint billboard_vbo = 0;
+
+    // Lighting
+    DirectionalLight dir_light;
+    std::vector<PointLight> point_lights;
+    std::vector<SpotLight> spot_lights;
+    int active_light_type = 0; // 0 = directional, 1 = point
+    int active_light_index = 0; // For point and spot lights
 
     // Application state
     float bg_r = 0.1f, bg_g = 0.1f, bg_b = 0.15f;
-    float tri_r = 0.0f, tri_g = 0.0f, tri_b = 1.0f;
+    bool fps_mode = true;
+    float ground_height = -218.70f;
+    float walk_anim_time = 0.0f;
+    bool is_moving = false;
+    bool show_post_process = true;
+    float shoot_anim_time = 0.0f;
+    glm::vec3 playerPos = glm::vec3(-121.64f, -218.70f, 63.23f);
+    glm::vec3 weapon_offset{ 1.15f, 3.6f, 2.4f };
+    glm::vec3 weapon_rotation{ 0.0f, 180.0f, 90.0f }; // Added 90 degrees to Z to stand it upright
+
+    // Gameplay
+    float player_health = 100.0f;
+    bool is_player_dead = false;
+    const float bandit_chase_dist = 50.0f;
+    const float bandit_attack_dist = 4.0f;
+    const float bandit_damage_rate = 30.0f; // health per second
+    const float bandit_speed = 16.0f;
+
+
+    // Physics
+    float velocity_y = 0.0f;
+    bool is_on_ground = false;
+    const float gravity = -25.0f;
+    const float jump_force = 15.0f;
+
+    // BVH Physics Engine
+    PG2::PhysicsEngine physics;
+    glm::vec3 last_safe_pos = glm::vec3(-121.64f, -218.70f, 63.23f);
+
+    void build_physics();
+    float get_ground_height(glm::vec3 pos, float ray_depth = 500.0f);
+
+    void spawn_bandit_wave(int count);
+    void spawn_whiskey_pickups();
+    std::vector<int> bandit_health;
+
+    // Gameplay Objects
+    enum class AIState { CHASE, SEEK_COVER, PATROL, SHOOTING };
+    std::vector<AIState> bandit_states;
+    std::vector<glm::vec3> bandit_target_positions;
+    std::vector<float> bandit_state_timers;
+
+    int wave_number = 1;
+    int frame_count = 0;
+    struct Dynamite {
+        glm::vec3 position;
+        glm::vec3 velocity;
+        float timer = 2.0f;
+        bool on_ground = false;
+    };
+    int score = 0;
+    std::vector<float> bandit_shoot_timers;
+    std::vector<Dynamite> active_dynamites;
+
+
+    std::shared_ptr<Model> dynamite_model;
+    std::shared_ptr<Model> bandit_base_model;
+    std::vector<float> bandit_throw_timers;
+    std::vector<float> bandit_velocities_y;
+    std::vector<glm::vec3> bandit_safe_positions;
+    std::vector<glm::vec3> bandit_last_positions;
+    std::vector<float> bandit_stuck_timers;
+
+    struct Bullet {
+        glm::vec3 position;
+        glm::vec3 velocity;
+        float life = 3.0f;
+        bool isFromPlayer = true;
+    };
+
+    struct WhiskeyPickup {
+        glm::vec3 position;
+        float rotation = 0.0f;
+        bool active = true;
+    };
+    std::vector<WhiskeyPickup> whiskey_pickups;
+    float whiskey_respawn_timer = 0.0f;
+    void spawn_single_whiskey();
+    std::shared_ptr<Model> whiskey_model;
+
+    std::vector<Bullet> active_bullets;
+    std::shared_ptr<Model> bullet_model;
+
+    const float bandit_throw_cooldown = 4.0f;
+    const float dynamite_damage = 40.0f;
+    const float dynamite_radius = 12.0f;
+
+    // Spline / Path (cv09)
+    void init_path_visualization();
+    void update_path_visualization();
+
+    // Cinematic Camera (cv09)
+    enum class AppCameraState { GAMEPLAY, CINEMATIC, TRANSITION };
+    AppCameraState cam_state = AppCameraState::GAMEPLAY;
+    PG2::CatmullRomSpline intro_spline;
+    float intro_time = 0.0f;
+    float intro_duration = 12.0f; // seconds
+    
+    struct {
+        glm::vec3 start_pos, end_pos;
+        glm::vec3 start_front, end_front;
+        float progress = 0.0f;
+        float duration = 1.5f; // seconds
+    } cam_transition;
+    
+    bool is_first_wave = true;
+    float invulnerability_timer = 0.0f;
+    float wave_info_timer = 0.0f;
+
+    // Spline visual (keep VBO/VAO if needed for debug, otherwise remove)
+    GLuint path_vao = 0, path_vbo = 0;
+    int path_vertex_count = 0;
+
+    // cv07 & cv08 helpers
+    void init_fbo();
+    void init_skybox();
+    void init_billboards();
+    void render_skybox();
+    void render_billboards();
+    GLuint post_process_vao = 0;
+    void render_post_process();
+    GLuint load_cubemap(std::vector<std::string> faces);
 
     // initialization helpers
     void init_imgui(void);          // set up ImGUI context and bindings
@@ -79,6 +286,7 @@ public:
     static void glfw_fbsize_callback(GLFWwindow* window, int width, int height);
     static void glfw_mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
     static void glfw_cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
+    static void cursorPositionCallback(GLFWwindow* window, double xpos, double ypos);
     static void glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
     void update_projection_matrix(void);
 
