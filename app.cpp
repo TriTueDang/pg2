@@ -537,18 +537,9 @@ int App::run(void)
                 ImGui::Separator();
                 ImGui::Text("FPS: %.1f", FPS);
                 ImGui::Separator();
-				ImGui::Text("Health: %.1f %%", player_health);
 				ImGui::Text("SCORE: %d", score);
-				ImGui::Text("WAVE: %d", wave_number);
-				ImGui::Text("BANDITS LEFT: %d", (int)bandits.size());
-				if (invulnerability_timer > 0.0f) {
-					ImGui::TextColored(ImVec4(0, 1, 1, 1), "SHIELD: %.1fs", invulnerability_timer);
-				}
-				ImGui::Text("V-Sync: %s (hit V to toggle)", is_vsync_on ? "ON" : "OFF");
-				ImGui::Text("Multisample (AA): %s (hit M to toggle)", is_multisample_on ? "ON" : "OFF");
 
-				
-				// Health Bar
+				// Health Bar (přesunuto nad WAVE a BANDITS LEFT)
 				ImGui::Spacing();
 				ImGui::Text("HEALTH");
                 float hp_normalized = std::clamp(player_health / 100.0f, 0.0f, 1.0f);
@@ -556,6 +547,15 @@ int App::run(void)
 				ImGui::PushStyleColor(ImGuiCol_PlotHistogram, health_color);
 				ImGui::ProgressBar(hp_normalized, ImVec2(-1, 0), "");
 				ImGui::PopStyleColor();
+				ImGui::Spacing();
+
+				ImGui::Text("WAVE: %d", wave_number);
+				ImGui::Text("BANDITS LEFT: %d", (int)bandits.size());
+				if (invulnerability_timer > 0.0f) {
+					ImGui::TextColored(ImVec4(0, 1, 1, 1), "SHIELD: %.1fs", invulnerability_timer);
+				}
+				ImGui::Text("V-Sync: %s (hit V to toggle)", is_vsync_on ? "ON" : "OFF");
+				ImGui::Text("Multisample (AA): %s (hit M to toggle)", is_multisample_on ? "ON" : "OFF");
 
 				if (is_player_dead) {
 					ImGui::SetNextWindowPos(ImVec2(width / 2.0f - 100, height / 2.0f - 50));
@@ -587,7 +587,7 @@ int App::run(void)
 
 				// Crosshair
 				ImGui::GetForegroundDrawList()->AddCircle(
-					ImVec2(width / 2.0f, height / 2.0f), 
+					ImVec2(width / 2.0f, height / 2.0f - 135.0f), 
 					10.0f, 
 					IM_COL32(255, 255, 255, 150), 
 					16, 
@@ -691,30 +691,40 @@ int App::run(void)
 			}
 			
 			is_moving = false;
-			glm::vec3 movement_delta(0.0f);
 			if (glm::length(moveDir) > 0.0f) {
 				moveDir.y = 0.0f; 
 				if (glm::length(moveDir) > 0.0f) {
-					movement_delta = glm::normalize(moveDir) * (float)(camera.MovementSpeed * delta_t);
 					is_moving = true;
 				}
 			}
 
-			// Integrated Physics Update for Player (always update physics to avoid falling through floor)
-			// REQ: correct collisions (using BVH physics engine)
-			auto kcc = physics.update_character(
-				playerPos, 
-				movement_delta, 
-				velocity_y, 
-				gravity, 
-				2.0f, // Lower step height (CV: fences are now blocked)
-				1.5f, // Robustnější poloměr detekce zamezující průchodu tenkými stěnami a mezerami (anti-tunneling)
-				delta_t
-			);
+			// Integrated Physics Update with Sub-stepping (Anti-Tunneling at Low FPS)
+			float remaining_time = delta_t;
+			const float MAX_STEP = 0.01f; // Vynutí garantovanou 100Hz kolizní přesnost
+			
+			while (remaining_time > 0.0f) {
+				float step_dt = std::min(remaining_time, MAX_STEP);
+				glm::vec3 step_movement(0.0f);
+				if (is_moving) {
+					step_movement = glm::normalize(moveDir) * (float)(camera.MovementSpeed * step_dt);
+				}
 
-			playerPos = kcc.new_position;
-			velocity_y = kcc.new_velocity_y;
-			is_on_ground = kcc.is_on_ground;
+				auto kcc = physics.update_character(
+					playerPos, 
+					step_movement, 
+					velocity_y, 
+					gravity, 
+					2.0f, // Lower step height (CV: fences are now blocked)
+					1.5f, // Robustnější poloměr detekce zamezující průchodu tenkými stěnami a mezerami (anti-tunneling)
+					step_dt
+				);
+
+				playerPos = kcc.new_position;
+				velocity_y = kcc.new_velocity_y;
+				is_on_ground = kcc.is_on_ground;
+
+				remaining_time -= step_dt;
+			}
 
 			// World Border (Prevent falling off map)
 			const float border_limit = 480.0f;
