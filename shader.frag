@@ -114,6 +114,7 @@ void main()
 
     // Combine all lighting
     vec3 lighting = dirLight + pointLight + spotLight;
+    lighting += vec3(0.05); // Minimum brightness boost for visibility
     
     // Apply to texture
     FragColor = vec4(lighting * texColor.rgb, texColor.a);

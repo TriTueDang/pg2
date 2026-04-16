@@ -67,10 +67,23 @@ public:
         glBindVertexArray(vao_);
         
     	if (ebo_ == 0) {
-    		glDrawArrays(primitive_type_, 0, vertices_.size());
+    		glDrawArrays(primitive_type_, 0, (GLsizei)vertices_.size());
     	} else {
     		glDrawElements(primitive_type_, static_cast<GLsizei>(indices_.size()), GL_UNSIGNED_INT, nullptr);
     	}
+    }
+
+    void drawInstanced(GLsizei instanceCount) {
+        if (texture_) {
+            texture_->bind(0);
+        }
+        glBindVertexArray(vao_);
+        
+        if (ebo_ == 0) {
+            glDrawArraysInstanced(primitive_type_, 0, (GLsizei)vertices_.size(), instanceCount);
+        } else {
+            glDrawElementsInstanced(primitive_type_, static_cast<GLsizei>(indices_.size()), GL_UNSIGNED_INT, nullptr, instanceCount);
+        }
     }
 
     void setTexture(std::shared_ptr<Texture> texture) {

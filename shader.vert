@@ -7,6 +7,12 @@ layout(location = 2) in vec2 aTex;
 uniform mat4 uM_m = mat4(1.0);
 uniform mat4 uV_m = mat4(1.0);
 uniform mat4 uP_m = mat4(1.0);
+uniform bool uUseInstancing = false;
+uniform mat4 uMeshLocal = mat4(1.0);
+
+layout(std430, binding = 0) buffer InstanceBuffer {
+    mat4 instances[];
+};
 
 // Light properties - directional
 uniform vec3 dir_light_direction;
@@ -44,10 +50,13 @@ out VS_OUT {
 
 void main()
 {
+    // Select model matrix (Instanced or Single Draw)
+    mat4 model = uUseInstancing ? instances[gl_InstanceID] * uMeshLocal : uM_m;
+    
     // Create Model-View matrix
-    mat4 mv_m = uV_m * uM_m;
+    mat4 mv_m = uV_m * model;
 
-    // Calculate view-space coordinate
+    // Calculate view-space coord
     vec4 P = mv_m * vec4(aPos, 1.0f);
 
     // Calculate normal in view space

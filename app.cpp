@@ -372,6 +372,11 @@ void App::init_assets(void) {
         auto bandit_base = std::make_shared<Model>("assets/bobrito-bandito-game-ready-3d-model-free/source/Offensive Idle.obj", shader_prog, bandit_tex);
         bandits.clear();
         bandit_base_model = bandit_base; // Store base model for wave spawning
+        bandit_base_model->scale = glm::vec3(0.05f); // Requested scale
+        
+        // Initialize Bandit SSBO (Modern OpenGL instancing)
+        glCreateBuffers(1, &bandit_ssbo);
+        glNamedBufferData(bandit_ssbo, 1000 * sizeof(glm::mat4), nullptr, GL_STREAM_DRAW); // Pre-allocate for 1000 bandits
         
         bandits.clear();
         bandit_throw_timers.clear();
@@ -627,12 +632,6 @@ int App::run(void)
 				if (cam_transition.progress >= 1.0f) {
 					cam_state = AppCameraState::GAMEPLAY;
 					invulnerability_timer = 10.0f; // 10 seconds of invulnerability after intro
-                    
-                    // REQ: delayed spawn - start first wave after intro
-                    if (is_first_wave) {
-                        spawn_bandit_wave(5);
-                        is_first_wave = false;
-                    }
 				} else {
 					// Smooth interpolation
 					float t = cam_transition.progress;
@@ -650,6 +649,11 @@ int App::run(void)
 
 			if (invulnerability_timer > 0.0f) {
 				invulnerability_timer -= delta_t;
+                // REQ: delayed spawn - start first wave exactly when shield ends AND intro is over
+                if (cam_state == AppCameraState::GAMEPLAY && is_first_wave && invulnerability_timer <= 0.0f) {
+                    spawn_bandit_wave(5);
+                    is_first_wave = false;
+                }
 			}
 			if (wave_info_timer > 0.0f) {
 				wave_info_timer -= delta_t;
@@ -829,10 +833,12 @@ int App::run(void)
 			for (auto it = active_dynamites.begin(); it != active_dynamites.end(); ) {
 				if (!it->on_ground) {
 					glm::vec3 nextPos = it->position + it->velocity * delta_t;
-					// Wall/Ground collision for dynamites using raycast
-					auto hit = physics.raycast(it->position, it->velocity, glm::length(it->velocity * delta_t));
+					// Wall/Ground/Ceiling collision for dynamites using raycast
+                    float step_len = glm::length(it->velocity * delta_t);
+					auto hit = physics.raycast(it->position, it->velocity, step_len);
 					if (hit.hit) {
-						it->timer = 0; // Detonate on impact with wall/ceiling
+						it->timer = 0; // Detonate on impact with wall/ceiling/anything
+                        it->position = hit.point; // Snap to hit point for accurate explosion
 					}
 					
 					it->velocity.y += gravity * delta_t;
@@ -854,6 +860,8 @@ int App::run(void)
 						player_health -= dynamite_damage * (1.0f - (dist / dynamite_radius));
 						if (player_health <= 0) is_player_dead = true;
 					}
+					spawn_particles(it->position, glm::vec3(0.5, 0.4, 0.2), 50, 1.0f); // Dust explosion
+                    spawn_particles(it->position, glm::vec3(1.0, 0.7, 0.2), 30, 0.4f); // Sparks
 					it = active_dynamites.erase(it);
 				} else {
 					++it;
@@ -867,6 +875,7 @@ int App::run(void)
 				auto hit = physics.raycast(it->position, it->velocity, dist_step);
 				
 				if (hit.hit) {
+                    spawn_particles(hit.point, glm::vec3(0.6f, 0.5f, 0.4f), 5, 0.2f); // Dust hit at exact impact point
 					it = active_bullets.erase(it);
 					continue;
 				}
@@ -881,6 +890,7 @@ int App::run(void)
 					// Bandit center height is roughly 4-6 units
 					float dist = glm::distance(it->position, bandits[i]->pivot_position + glm::vec3(0, 4.0f, 0));
 					if (dist < 4.0f) { 
+                        spawn_particles(it->position, glm::vec3(1.0f, 0.1f, 0.1f), 10, 0.3f); // Blood/Impact
 						bandit_health[i]--;
 						if (bandit_health[i] <= 0) {
 							bandits.erase(bandits.begin() + i);
@@ -917,10 +927,12 @@ int App::run(void)
 
 			}
 
-			// Wave progression: spawn new wave when only 1 or 0 bandits remain
-			if (bandits.size() <= 1 && !is_player_dead) {
+			// Wave progression: spawn new wave when 0 bandits remain (only during gameplay and after first wave)
+			if (cam_state == AppCameraState::GAMEPLAY && !is_first_wave && bandits.size() == 0 && !is_player_dead) {
 				wave_number++;
-				spawn_bandit_wave(std::min(40, 5 + wave_number * 3)); // Faster wave scaling, capped at 40 for infinite play
+                // REQ Formula: linearly scale so that wave 50 has 40 bandits. (5 + (50-1)*k = 40 => 49k=35 => k=35/49=5/7)
+				spawn_bandit_wave(5 + (wave_number - 1) * 5 / 7); 
+                wave_info_timer = 4.0f;
 			}
 
 			// Periodic Whiskey Respawn (CV: Infinite Mode recovery)
@@ -1110,10 +1122,36 @@ int App::run(void)
 				player_model->draw();
 			}
 
-		// Draw bandits
-			for (auto& bandit : bandits) {
-				bandit->draw();
-			}
+			// Optimized Bandit Rendering (AZDO Instancing + Frustum Culling)
+            if (bandit_base_model) {
+                // 1. Extract view-projection frustum
+                Frustum frustum = extract_frustum(projection_matrix * view_matrix);
+                
+                // 2. Collect visible bandit matrices
+                std::vector<glm::mat4> visible_matrices;
+                visible_matrices.reserve(bandits.size());
+                
+                for (auto& bandit : bandits) {
+                    // DEBUG: Temporarily disabled culling to fix invisibility
+                    // if (is_inside_frustum(frustum, bandit->pivot_position + glm::vec3(0, 4.0f, 0), 6.0f)) 
+                    {
+                        // Calculate model matrix (Manually, to bypass individual draw calls)
+                        glm::mat4 T = glm::translate(glm::mat4(1.0f), bandit->pivot_position);
+                        glm::mat4 R = glm::yawPitchRoll(glm::radians(bandit->eulerAngles.y), glm::radians(bandit->eulerAngles.x), glm::radians(bandit->eulerAngles.z));
+                        glm::mat4 S = glm::scale(glm::mat4(1.0f), bandit->scale);
+                        visible_matrices.push_back(T * R * S);
+                    }
+                }
+
+                // 3. Batch render visible bandits
+                if (!visible_matrices.empty()) {
+                    // Upload matrices to SSBO using glNamedBufferData (or glNamedBufferSubData if we want to be faster)
+                    glNamedBufferData(bandit_ssbo, visible_matrices.size() * sizeof(glm::mat4), visible_matrices.data(), GL_STREAM_DRAW);
+                    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, bandit_ssbo);
+                    
+                    bandit_base_model->drawInstanced((GLsizei)visible_matrices.size());
+                }
+            }
 
 
 			// Draw dynamites
@@ -1188,8 +1226,8 @@ int App::run(void)
 				weapon_model->draw();
 			}
 
-            // cv08: Draw Billboards (tumbleweeds)
-            render_billboards();
+            render_particles(); // Optimized instanced particles
+            render_billboards(); // Tumbleweeds
 
             // cv07: Resolve FBO to screen
             if (show_post_process) {
@@ -1589,7 +1627,17 @@ void App::spawn_bandit_wave(int count) {
     
     wave_info_timer = 4.0f; // Show "New Wave" for 4 seconds
     
-    // Clear old state for fresh wave (except score/level tracker)
+    // --- DIFFICULTY SCALING ---
+    // Scalable attributes (REQ: challenging up to wave 500)
+    int current_health = 3 + (wave_number / 15);
+    bandit_speed = 16.0f + std::min(40.0f, (float)wave_number / 4.0f); // Fast bandits!
+    bandit_throw_cooldown = std::max(1.0f, 4.0f - (float)wave_number / 100.0f);
+    bandit_damage_rate = 30.0f + (float)wave_number * 0.5f;
+
+    std::cout << "[Wave " << wave_number << "] Enemies: " << count 
+              << ", Health: " << current_health << ", Speed: " << bandit_speed << "\n";
+
+    // Clear old state for fresh wave
     bandit_states.clear();
     bandit_target_positions.clear();
     bandit_state_timers.clear();
@@ -1600,65 +1648,40 @@ void App::spawn_bandit_wave(int count) {
     bandit_safe_positions.clear();
     bandit_last_positions.clear();
     bandit_stuck_timers.clear();
-    
-    // We already cleared 'bandits' vector in reset or before calling if needed, 
-    // but here we are spawning a NEW wave, so we clear it now.
-    bandits.clear();
 
-    std::default_random_engine generator((unsigned)time(0));
-    std::uniform_real_distribution<float> dist_angle(0.0f, 6.283185f);
-    std::uniform_real_distribution<float> dist_radius(200.0f, 250.0f);
-
-    for (int i = 0; i < count; ++i) {
+    // Spawn!
+    for (int i = 0 ; i < count ; i++) {
         auto bandit = std::make_shared<Model>(*bandit_base_model);
         
-        // Spawn randomly across the city
+        // REQ: bandits must spawn at least 50m from player
         glm::vec3 spawn_pos;
+        float dist;
         int attempts = 0;
-        float h = 0.0f;
         do {
-            float angle = dist_angle(generator);
-            float radius = dist_radius(generator);
-            spawn_pos = playerPos + glm::vec3(cos(angle) * radius, 0, sin(angle) * radius);
-            
-            h = get_ground_height(spawn_pos);
+            float angle = (float)(rand() % 360) * 0.0174f;
+            float d = 60.0f + (float)(rand() % 200); // 60-260m
+            spawn_pos = playerPos + glm::vec3(cos(angle) * d, 0, sin(angle) * d);
+            float h = get_ground_height(spawn_pos, 400.0f);
+            if (h > -300.0f) spawn_pos.y = h;
+            dist = glm::distance(playerPos, spawn_pos);
             attempts++;
-            
-            // Dispersion check: ensure not too close to other bandits
-            bool too_close = false;
-            for (auto const& existing : bandits) {
-                if (glm::distance(spawn_pos, existing->pivot_position) < 15.0f) {
-                    too_close = true;
-                    break;
-                }
-            }
-            if (too_close) h = -1000.0f; // Force retry
-            
-        } while ((h < -230.0f) && attempts < 50); // Relaxed city floor check
+        } while (dist < 50.0f && attempts < 20);
 
         bandit->pivot_position = spawn_pos;
-        bandit->pivot_position.y = h;
-        if (bandit->pivot_position.y < -500.0f) bandit->pivot_position.y = -218.70f;
-        
-        bandit->scale = glm::vec3(0.04f); 
         bandits.push_back(bandit);
-        bandit_throw_timers.push_back(2.0f + (float)(rand() % 4)); 
-        bandit_shoot_timers.push_back(1.0f + (float)(rand() % 3));
+        bandit_health.push_back(current_health); 
+        bandit_throw_timers.push_back(2.0f + (float)(rand() % 30) * 0.1f);
+        bandit_shoot_timers.push_back(1.0f + (float)(rand() % 20) * 0.1f);
         bandit_velocities_y.push_back(0.0f);
-        bandit_safe_positions.push_back(bandit->pivot_position);
-        bandit_last_positions.push_back(bandit->pivot_position);
+        bandit_safe_positions.push_back(spawn_pos);
+        bandit_last_positions.push_back(spawn_pos);
         bandit_stuck_timers.push_back(0.0f);
-
-        // State Machine Init
+        
+        // Initial AI state
         bandit_states.push_back(AIState::CHASE);
-        bandit_target_positions.push_back(bandit->pivot_position);
-        bandit_state_timers.push_back(3.0f + (float)(rand() % 10));
-        bandit_health.push_back(3); // 3 hits to kill
+        bandit_target_positions.push_back(playerPos);
+        bandit_state_timers.push_back(5.0f + (float)(rand() % 5));
     }
-    std::cout << "Wave " << wave_number << " started with " << count << " bandits.\n";
-
-    // Refresh Whiskey pickups every wave
-    spawn_whiskey_pickups();
 }
 
 void App::spawn_whiskey_pickups() {
@@ -1873,6 +1896,57 @@ void App::init_billboards() {
             billboards.push_back(b);
         }
     }
+
+    // --- Particle AZDO Initialization ---
+    // Persistent Mapping: CPU and GPU share the same memory buffer
+    glCreateBuffers(1, &particle_vbo);
+    GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+    glNamedBufferStorage(particle_vbo, MAX_PARTICLES * sizeof(ParticleInstance), nullptr, flags);
+    mapped_particles = (ParticleInstance*)glMapNamedBufferRange(particle_vbo, 0, MAX_PARTICLES * sizeof(ParticleInstance), flags);
+
+    // Setup instanced attributes in billboard_vao
+    // We reuse the same quad vertex buffer but add new per-instance data
+    glEnableVertexArrayAttrib(billboard_vao, 2); // iPosSize attribute
+    glVertexArrayAttribFormat(billboard_vao, 2, 4, GL_FLOAT, GL_FALSE, offsetof(ParticleInstance, pos_size));
+    glVertexArrayAttribBinding(billboard_vao, 2, 1);
+    glVertexArrayBindingDivisor(billboard_vao, 1, 1); // DSA version for binding point 1
+
+    glEnableVertexArrayAttrib(billboard_vao, 3); // iColorLife attribute
+    glVertexArrayAttribFormat(billboard_vao, 3, 4, GL_FLOAT, GL_FALSE, offsetof(ParticleInstance, color_life));
+    glVertexArrayAttribBinding(billboard_vao, 3, 1);
+    // Already set divisor for binding 1 above
+
+    glVertexArrayVertexBuffer(billboard_vao, 1, particle_vbo, 0, sizeof(ParticleInstance));
+}
+
+App::Frustum App::extract_frustum(const glm::mat4& m) {
+    Frustum f;
+    // Extract planes from View-Projection matrix (Gribb-Hartmann method)
+    // Left
+    f.planes[0] = glm::vec4(m[0][3] + m[0][0], m[1][3] + m[1][0], m[2][3] + m[2][0], m[3][3] + m[3][0]);
+    // Right
+    f.planes[1] = glm::vec4(m[0][3] - m[0][0], m[1][3] - m[1][0], m[2][3] - m[2][0], m[3][3] - m[3][0]);
+    // Bottom
+    f.planes[2] = glm::vec4(m[0][3] + m[0][1], m[1][3] + m[1][1], m[2][3] + m[2][1], m[3][3] + m[3][1]);
+    // Top
+    f.planes[3] = glm::vec4(m[0][3] - m[0][1], m[1][3] - m[1][1], m[2][3] - m[2][1], m[3][3] - m[3][1]);
+    // Near
+    f.planes[4] = glm::vec4(m[0][3] + m[0][2], m[1][3] + m[1][2], m[2][3] + m[2][2], m[3][3] + m[3][2]);
+    // Far
+    f.planes[5] = glm::vec4(m[0][3] - m[0][2], m[1][3] - m[1][2], m[2][3] - m[2][2], m[3][3] - m[3][2]);
+
+    // Normalize planes
+    for (int i = 0; i < 6; i++) {
+        f.planes[i] /= glm::length(glm::vec3(f.planes[i]));
+    }
+    return f;
+}
+
+bool App::is_inside_frustum(const Frustum& f, glm::vec3 pos, float radius) {
+    for (int i = 0; i < 6; i++) {
+        if (glm::dot(f.planes[i], glm::vec4(pos, 1.0f)) < -radius) return false;
+    }
+    return true;
 }
 
 void App::render_skybox() {
@@ -1905,8 +1979,8 @@ void App::render_billboards() {
     glBindVertexArray(billboard_vao);
     for (const auto& b : billboards) {
         billboard_shader->setUniform("worldPos", b.position);
-        billboard_shader->setUniform("scale", b.scale); 
-        billboard_shader->setUniform("tintColor", b.tint);
+        billboard_shader->setUniform("scale", b.scale);
+        billboard_shader->setUniform("tintColor", b.tint * 0.6f); // DARKER BUSHES (requested)
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
 }
@@ -1927,4 +2001,46 @@ void App::render_post_process() {
     
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
+}
+
+void App::spawn_particles(glm::vec3 pos, glm::vec3 color, int count, float size) {
+    for (int i = 0; i < count; ++i) {
+        Particle p;
+        p.position = pos;
+        float rx = (float)(rand() % 200 - 100) / 10.0f;
+        float ry = (float)(rand() % 200 - 50) / 10.0f;
+        float rz = (float)(rand() % 200 - 100) / 10.0f;
+        p.velocity = glm::vec3(rx, ry, rz);
+        p.color = glm::vec4(color, 1.0f);
+        p.life = 0.5f + (float)(rand() % 100) / 100.0f;
+        p.size = size * (0.3f + (float)(rand() % 100) / 100.0f);
+        active_particles.push_back(p);
+    }
+}
+
+void App::render_particles() {
+    if (active_particles.empty() || !mapped_particles) return;
+
+    // Fill the mapped buffer (AZDO)
+    int count = 0;
+    for (const auto& p : active_particles) {
+        if (count >= MAX_PARTICLES) break;
+        mapped_particles[count].pos_size = glm::vec4(p.position, p.size);
+        mapped_particles[count].color_life = glm::vec4(p.color.r, p.color.g, p.color.b, p.life);
+        count++;
+    }
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive
+    glDepthMask(GL_FALSE);
+
+    particle_shader->use();
+    particle_shader->setUniform("projection", projection_matrix);
+    particle_shader->setUniform("view", view_matrix);
+
+    glBindVertexArray(billboard_vao);
+    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, count);
+
+    glDepthMask(GL_TRUE);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }

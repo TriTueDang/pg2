@@ -126,8 +126,28 @@ public:
 
             // Set final model matrix uniform
             mesh_pkg.shader->setUniform("uM_m", model_matrix * mesh_local_matrix);
+            mesh_pkg.shader->setUniform("uUseInstancing", false); // Ensure instancing is off for standard draw
 
             mesh_pkg.mesh->draw();   // draw mesh
+        }
+    }
+
+    void drawInstanced(GLsizei instanceCount) {
+        if (instanceCount == 0) return;
+
+        for (auto const& mesh_pkg : meshes) {
+            mesh_pkg.shader->use();
+            
+            // Calculate mesh-local transformation
+            glm::mat4 mT = glm::translate(glm::mat4(1.0f), mesh_pkg.origin);
+            glm::mat4 mR = glm::yawPitchRoll(glm::radians(mesh_pkg.eulerAngles.y), glm::radians(mesh_pkg.eulerAngles.x), glm::radians(mesh_pkg.eulerAngles.z));
+            glm::mat4 mS = glm::scale(glm::mat4(1.0f), mesh_pkg.scale);
+            glm::mat4 mesh_local_matrix = mT * mR * mS;
+
+            mesh_pkg.shader->setUniform("uMeshLocal", mesh_local_matrix);
+            mesh_pkg.shader->setUniform("uUseInstancing", true);
+            mesh_pkg.mesh->drawInstanced(instanceCount);
+            mesh_pkg.shader->setUniform("uUseInstancing", false);
         }
     }
 

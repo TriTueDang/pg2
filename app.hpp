@@ -150,10 +150,10 @@ private:
     // Gameplay
     float player_health = 100.0f;
     bool is_player_dead = false;
-    const float bandit_chase_dist = 50.0f;
-    const float bandit_attack_dist = 4.0f;
-    const float bandit_damage_rate = 30.0f; // health per second
-    const float bandit_speed = 16.0f;
+    float bandit_chase_dist = 50.0f;
+    float bandit_attack_dist = 4.0f;
+    float bandit_damage_rate = 30.0f; // health per second
+    float bandit_speed = 16.0f;
 
 
     // Physics
@@ -214,8 +214,19 @@ private:
         float life; // 1.0 to 0.0
         float size;
     };
+
+    struct ParticleInstance {
+        glm::vec4 pos_size;  // (x, y, z, size)
+        glm::vec4 color_life; // (r, g, b, life)
+    };
+
     std::vector<Particle> active_particles;
     std::shared_ptr<ShaderProgram> particle_shader;
+    
+    GLuint particle_vbo = 0;
+    ParticleInstance* mapped_particles = nullptr;
+    const int MAX_PARTICLES = 2000;
+
     void spawn_particles(glm::vec3 pos, glm::vec3 color, int count, float size = 0.5f);
 
     struct WhiskeyPickup {
@@ -231,9 +242,17 @@ private:
     std::vector<Bullet> active_bullets;
     std::shared_ptr<Model> bullet_model;
 
-    const float bandit_throw_cooldown = 4.0f;
+    float bandit_throw_cooldown = 4.0f;
     const float dynamite_damage = 40.0f;
     const float dynamite_radius = 12.0f;
+
+    // --- Performance Optimization (AZDO) ---
+    GLuint bandit_ssbo = 0;
+    struct Frustum {
+        glm::vec4 planes[6];
+    };
+    Frustum extract_frustum(const glm::mat4& viewProj);
+    bool is_inside_frustum(const Frustum& f, glm::vec3 pos, float radius);
 
     // Spline / Path (cv09)
     void init_path_visualization();
@@ -241,7 +260,7 @@ private:
 
     // Cinematic Camera (cv09)
     enum class AppCameraState { GAMEPLAY, CINEMATIC, TRANSITION };
-    AppCameraState cam_state = AppCameraState::GAMEPLAY;
+    AppCameraState cam_state = AppCameraState::CINEMATIC;
     PG2::CatmullRomSpline intro_spline;
     float intro_time = 0.0f;
     float intro_duration = 12.0f; // seconds
