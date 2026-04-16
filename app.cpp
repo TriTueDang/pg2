@@ -708,7 +708,7 @@ int App::run(void)
 				velocity_y, 
 				gravity, 
 				2.0f, // Lower step height (CV: fences are now blocked)
-				0.6f, // Smaller radius for narrow steps
+				1.5f, // Robustnější poloměr detekce zamezující průchodu tenkými stěnami a mezerami (anti-tunneling)
 				delta_t
 			);
 

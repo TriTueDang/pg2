@@ -36,6 +36,7 @@ public:
         // FAKT PODROBNÁ OPTIMALIZACE: Cachování pro frustum culling
         AABB cached_world_aabb;
         bool aabb_ready = false;
+        glm::mat4 cached_final_matrix{1.0f};
 
         mesh_package(std::shared_ptr<Mesh> m, std::shared_ptr<ShaderProgram> s, glm::vec3 o, glm::vec3 e, glm::vec3 sc, std::shared_ptr<Texture> t = nullptr)
             : mesh(m), shader(s), origin(o), eulerAngles(e), scale(sc), texture(t) {}
@@ -137,12 +138,20 @@ public:
 
         // call draw() on mesh (all meshes)
         for (auto& mesh_pkg : meshes) {
-            // Calculate mesh-local transformation
-            glm::mat4 mT = glm::translate(glm::mat4(1.0f), mesh_pkg.origin);
-            glm::mat4 mR = glm::yawPitchRoll(glm::radians(mesh_pkg.eulerAngles.y), glm::radians(mesh_pkg.eulerAngles.x), glm::radians(mesh_pkg.eulerAngles.z));
-            glm::mat4 mS = glm::scale(glm::mat4(1.0f), mesh_pkg.scale);
-            glm::mat4 mesh_local_matrix = mT * mR * mS;
-            glm::mat4 final_model_matrix = model_matrix * mesh_local_matrix;
+            // --- PER-MESH LOCAL CACHE (Optimized Static AABB & Matrix) ---
+            glm::mat4 final_model_matrix;
+            if (!mesh_pkg.aabb_ready || !is_static) {
+                // Calculate mesh-local transformation only once for static objects
+                glm::mat4 mT = glm::translate(glm::mat4(1.0f), mesh_pkg.origin);
+                glm::mat4 mR = glm::yawPitchRoll(glm::radians(mesh_pkg.eulerAngles.y), glm::radians(mesh_pkg.eulerAngles.x), glm::radians(mesh_pkg.eulerAngles.z));
+                glm::mat4 mS = glm::scale(glm::mat4(1.0f), mesh_pkg.scale);
+                glm::mat4 mesh_local_matrix = mT * mR * mS;
+                
+                final_model_matrix = model_matrix * mesh_local_matrix;
+                mesh_pkg.cached_final_matrix = final_model_matrix;
+            } else {
+                final_model_matrix = mesh_pkg.cached_final_matrix;
+            }
 
             // --- PER-MESH FRUSTUM CULLING (Optimized Static AABB Caching) ---
             if (frustum) {
