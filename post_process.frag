@@ -30,6 +30,11 @@ void main()
         color = mix(color, vec3(color.r + 0.3, color.g * 0.5, color.b * 0.5), pulse * 0.4);
     }
 
-    // 4. Output (Removed explicit gamma correction as it might be double-gamma-ing)
+    // 4. Tone Mapping (Reinhard) - prevents overexposure by mapping HDR to LDR
+    color = color / (color + vec3(1.0));
+
+    // 5. Gamma Correction (sRGB) - makes lighting look more natural
+    color = pow(color, vec3(1.0 / 2.2));
+
     FragColor = vec4(color, 1.0);
 }

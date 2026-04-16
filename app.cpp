@@ -423,22 +423,22 @@ void App::init_assets(void) {
     // REQ: lighting model (1x ambient, 1x directional, 2x point, 1x reflector) - viz shader.frag
     // Initialize directional light (sun)
     dir_light.direction = glm::normalize(glm::vec3(1.0f, -1.0f, -0.5f));
-    dir_light.ambient = glm::vec3(0.3f, 0.3f, 0.3f);
-    dir_light.diffuse = glm::vec3(0.8f, 0.8f, 0.8f); 
-    dir_light.specular = glm::vec3(0.5f, 0.5f, 0.5f);
+    dir_light.ambient = glm::vec3(0.12f, 0.12f, 0.15f); // Reduced global ambient
+    dir_light.diffuse = glm::vec3(0.6f, 0.5f, 0.4f);  // Slightly warmer, less harsh
+    dir_light.specular = glm::vec3(0.3f, 0.3f, 0.3f);
 
     // REQ: min. 2x point light
     PointLight light1;
     light1.position = glm::vec3(5.0f, 15.0f, 5.0f);
-    light1.ambient = glm::vec3(0.1f, 0.1f, 0.1f);
-    light1.diffuse = glm::vec3(1.0f, 0.8f, 0.4f);
+    light1.ambient = glm::vec3(0.01f, 0.01f, 0.01f); // Minimal ambient from point lights
+    light1.diffuse = glm::vec3(1.5f, 1.2f, 0.6f); // Stronger diffuse to compensate for attenuation
     light1.specular = glm::vec3(1.0f, 1.0f, 1.0f);
     point_lights.push_back(light1);
 
     PointLight light2;
     light2.position = glm::vec3(-50.0f, 20.0f, -30.0f);
-    light2.ambient = glm::vec3(0.1f, 0.1f, 0.1f);
-    light2.diffuse = glm::vec3(0.4f, 0.8f, 1.0f); // Blueish light
+    light2.ambient = glm::vec3(0.01f, 0.01f, 0.01f);
+    light2.diffuse = glm::vec3(0.6f, 1.2f, 1.5f); // Compensating for attenuation
     light2.specular = glm::vec3(1.0f, 1.0f, 1.0f);
     point_lights.push_back(light2);
 
