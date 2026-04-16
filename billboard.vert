@@ -8,6 +8,7 @@ uniform mat4 projection;
 uniform mat4 view;
 uniform vec3 worldPos;
 uniform vec2 scale;
+uniform bool uUseInstancing;
 
 void main()
 {

@@ -358,10 +358,9 @@ void App::init_assets(void) {
         player_model->scale = glm::vec3(4.0f); // Restored original scale
     } catch (...) { std::cerr << "Failed to load Rango\n"; }
 
-    // Load Revolver (attached to player)
     try {
         weapon_model = std::make_shared<Model>("assets/38-special-revolver/source/rev_anim.obj.obj", shader_prog, revolver_tex);
-        weapon_model->scale = glm::vec3(0.005f); // Restored original scale
+        weapon_model->scale = glm::vec3(0.015f); // Increased scale for visibility
     } catch (...) { std::cerr << "Failed to load revolver\n"; }
 
     // Build BVH physics for the city immediately after loading city model
@@ -654,22 +653,26 @@ int App::run(void)
                     spawn_bandit_wave(5);
                     is_first_wave = false;
                 }
-			}
+			} else if (cam_state == AppCameraState::GAMEPLAY && !is_player_dead) {
+                // REQ: Slow health regeneration
+                player_health = std::min(100.0f, player_health + 1.0f * delta_t); // 1 HP per second
+            }
 			if (wave_info_timer > 0.0f) {
 				wave_info_timer -= delta_t;
 			}
 
-            // --- Particle System Update ---
-            for (auto it = active_particles.begin(); it != active_particles.end();) {
-                it->life -= delta_t;
-                if (it->life <= 0.0f) {
-                    it = active_particles.erase(it);
-                } else {
-                    it->position += it->velocity * delta_t;
-                    it->velocity.y -= 9.8f * delta_t; // Gravity for particles
-                    ++it;
-                }
-            }
+            // --- Particle System Update (Optimized Erase-Remove) ---
+            active_particles.erase(
+                std::remove_if(active_particles.begin(), active_particles.end(),
+                    [&](Particle& p) {
+                        p.life -= delta_t;
+                        if (p.life <= 0.0f) return true;
+                        p.position += p.velocity * delta_t;
+                        p.velocity.y -= 9.8f * delta_t; // Gravity for particles
+                        return false;
+                    }),
+                active_particles.end()
+            );
 
 			//########## react to user  ##########
 			if (cam_state == AppCameraState::GAMEPLAY) {
@@ -868,64 +871,57 @@ int App::run(void)
 				}
 			}
 
-			// Update Bullets
-			for (auto it = active_bullets.begin(); it != active_bullets.end(); ) {
-				// Wall/Ground collision for bullets using raycast
-				float dist_step = glm::length(it->velocity * delta_t);
-				auto hit = physics.raycast(it->position, it->velocity, dist_step);
-				
-				if (hit.hit) {
-                    spawn_particles(hit.point, glm::vec3(0.6f, 0.5f, 0.4f), 5, 0.2f); // Dust hit at exact impact point
-					it = active_bullets.erase(it);
-					continue;
-				}
-				
-				it->position += it->velocity * delta_t;
-				it->life -= delta_t;
+			// Update Bullets (Optimized Erase-Remove)
+            active_bullets.erase(
+                std::remove_if(active_bullets.begin(), active_bullets.end(),
+                    [&](Bullet& b) {
+                        // Wall/Ground collision for bullets using raycast
+                        float dist_step = glm::length(b.velocity * delta_t);
+                        auto hit = physics.raycast(b.position, b.velocity, dist_step);
+                        if (hit.hit) {
+                            spawn_particles(hit.point, glm::vec3(0.6f, 0.5f, 0.4f), 5, 0.2f);
+                            return true;
+                        }
+                        
+                        b.position += b.velocity * delta_t;
+                        b.life -= delta_t;
+                        if (b.life <= 0.0f) return true;
 
-				bool has_collided = false;
-				// Collision with bandits (ONLY if bullet is from player)
-				for (size_t i = 0; i < bandits.size() && it->isFromPlayer; ++i) {
+                        // Collision with bandits (ONLY if bullet is from player)
+                        for (size_t i = 0; i < bandits.size() && b.isFromPlayer; ++i) {
+                            float dist = glm::distance(b.position, bandits[i]->pivot_position + glm::vec3(0, 4.0f, 0));
+                            if (dist < 4.0f) { 
+                                spawn_particles(b.position, glm::vec3(1.0f, 0.1f, 0.1f), 10, 0.3f);
+                                bandit_health[i]--;
+                                if (bandit_health[i] <= 0) {
+                                    // Deleting bandit still uses erase but there are few per frame
+                                    bandits.erase(bandits.begin() + i);
+                                    if (i < bandit_throw_timers.size()) bandit_throw_timers.erase(bandit_throw_timers.begin() + i);
+                                    if (i < bandit_shoot_timers.size()) bandit_shoot_timers.erase(bandit_shoot_timers.begin() + i);
+                                    if (i < bandit_velocities_y.size()) bandit_velocities_y.erase(bandit_velocities_y.begin() + i);
+                                    if (i < bandit_states.size()) bandit_states.erase(bandit_states.begin() + i);
+                                    if (i < bandit_target_positions.size()) bandit_target_positions.erase(bandit_target_positions.begin() + i);
+                                    if (i < bandit_state_timers.size()) bandit_state_timers.erase(bandit_state_timers.begin() + i);
+                                    if (i < bandit_health.size()) bandit_health.erase(bandit_health.begin() + i);
+                                    score += 100;
+                                }
+                                return true;
+                            }
+                        }
 
-					// Bandit center height is roughly 4-6 units
-					float dist = glm::distance(it->position, bandits[i]->pivot_position + glm::vec3(0, 4.0f, 0));
-					if (dist < 4.0f) { 
-                        spawn_particles(it->position, glm::vec3(1.0f, 0.1f, 0.1f), 10, 0.3f); // Blood/Impact
-						bandit_health[i]--;
-						if (bandit_health[i] <= 0) {
-							bandits.erase(bandits.begin() + i);
-							if (i < bandit_throw_timers.size()) bandit_throw_timers.erase(bandit_throw_timers.begin() + i);
-							if (i < bandit_shoot_timers.size()) bandit_shoot_timers.erase(bandit_shoot_timers.begin() + i);
-							if (i < bandit_velocities_y.size()) bandit_velocities_y.erase(bandit_velocities_y.begin() + i);
-							if (i < bandit_states.size()) bandit_states.erase(bandit_states.begin() + i);
-							if (i < bandit_target_positions.size()) bandit_target_positions.erase(bandit_target_positions.begin() + i);
-							if (i < bandit_state_timers.size()) bandit_state_timers.erase(bandit_state_timers.begin() + i);
-							if (i < bandit_health.size()) bandit_health.erase(bandit_health.begin() + i);
-							
-							score += 100; // Points!
-						}
-						has_collided = true;
-						break;
-					}
-				}
-
-				// Collision with player (only if bullet is NOT from player)
-				if (!has_collided && !it->isFromPlayer) {
-					float distToPlayer = glm::distance(it->position, playerPos + glm::vec3(0, 5.0f, 0));
-					if (distToPlayer < 5.0f && cam_state == AppCameraState::GAMEPLAY && invulnerability_timer <= 0.0f) {
-						player_health -= 5.0f; // Take damage
-						if (player_health <= 0) is_player_dead = true;
-						has_collided = true;
-					}
-				}
-
-				if (has_collided || it->life <= 0) {
-					it = active_bullets.erase(it);
-				} else {
-					++it;
-				}
-
-			}
+                        // Collision with player (only if bullet is NOT from player)
+                        if (!b.isFromPlayer) {
+                            float distToPlayer = glm::distance(b.position, playerPos + glm::vec3(0, 5.0f, 0));
+                            if (distToPlayer < 5.0f && cam_state == AppCameraState::GAMEPLAY && invulnerability_timer <= 0.0f) {
+                                player_health -= 5.0f;
+                                if (player_health <= 0) is_player_dead = true;
+                                return true;
+                            }
+                        }
+                        return false;
+                    }),
+                active_bullets.end()
+            );
 
 			// Wave progression: spawn new wave when 0 bandits remain (only during gameplay and after first wave)
 			if (cam_state == AppCameraState::GAMEPLAY && !is_first_wave && bandits.size() == 0 && !is_player_dead) {
@@ -1007,8 +1003,9 @@ int App::run(void)
 
 			// Update weapon position
 			if (weapon_model && player_model) {
-				// Use tunable offsets
-				weapon_model->pivot_position = player_model->pivot_position + camera.Right * weapon_offset.x + camera.Up * weapon_offset.y + camera.Front * weapon_offset.z;
+				// Use tunable offsets (manually adjusted for visibility)
+                glm::vec3 w_off = glm::vec3(2.5f, 4.5f, -2.0f); 
+                weapon_model->pivot_position = playerPos + camera.Right * w_off.x + camera.Up * w_off.y + camera.Front * w_off.z;
 				
 				// Standard rotation based on camera
 				weapon_model->eulerAngles.y = camera.Yaw + weapon_rotation.y;
@@ -1132,8 +1129,8 @@ int App::run(void)
                 visible_matrices.reserve(bandits.size());
                 
                 for (auto& bandit : bandits) {
-                    // DEBUG: Temporarily disabled culling to fix invisibility
-                    // if (is_inside_frustum(frustum, bandit->pivot_position + glm::vec3(0, 4.0f, 0), 6.0f)) 
+                    // Optimized culling with safer radius (15.0f)
+                    if (is_inside_frustum(frustum, bandit->pivot_position + glm::vec3(0, 4.0f, 0), 15.0f)) 
                     {
                         // Calculate model matrix (Manually, to bypass individual draw calls)
                         glm::mat4 T = glm::translate(glm::mat4(1.0f), bandit->pivot_position);
@@ -1616,14 +1613,6 @@ float App::get_ground_height(glm::vec3 pos, float ray_depth) {
 
 void App::spawn_bandit_wave(int count) {
     if (!bandit_base_model) return;
-    
-    // Trigger Cinematic Intro (cv09) only on first wave
-    if (is_first_wave) {
-        cam_state = AppCameraState::CINEMATIC;
-        intro_time = 0.0f;
-        is_first_wave = false;
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); 
-    }
     
     wave_info_timer = 4.0f; // Show "New Wave" for 4 seconds
     
