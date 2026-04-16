@@ -29,6 +29,7 @@ public:
     // Simple mesh from vertices
     Mesh(std::vector<Vertex> const &vertices, GLenum primitive_type) : primitive_type_{primitive_type}, vertices_{vertices}
     {
+        // REQ: no DSA (Direct State Access) instafail => use DSA (glCreate*, glNamed*, glVertexArray*)
         glCreateVertexArrays(1, &vao_);
         glCreateBuffers(1, &vbo_);
 

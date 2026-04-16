@@ -32,6 +32,7 @@ uniform vec3 spot_light_direction;
 uniform float spot_light_cutoff;
 uniform float spot_light_outer_cutoff;
 
+// REQ: lighting model, all basic lights types (ambient, directional, point, reflector)
 // Input from vertex shader
 in VS_OUT {
     vec3 fragPos;

@@ -112,7 +112,7 @@ bool App::init() {
         // GLFW INIT
         // -------------------------
         init_glfw();
-
+        // REQ: JSON config file (config.json)
         load_config("config.json");
 
         // -------------------------
@@ -120,9 +120,7 @@ bool App::init() {
         // -------------------------
         init_glew();
 
-        // -------------------------
-        // OPENGL DEBUG
-        // -------------------------
+        // REQ: GL debug enabled via glDebugMessageCallback (viz init_gl_debug)
         init_gl_debug();
 
         // -------------------------
@@ -135,7 +133,8 @@ bool App::init() {
 
         glEnable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE); // Ensure triangle is visible from both sides
-        glEnable(GL_MULTISAMPLE); // Task 1: Enable multisampling by default
+        // REQ: antialiasing (MSAA 4x, viz init_glfw)
+        glEnable(GL_MULTISAMPLE); 
         
         // cv07: Enable Blending
         glEnable(GL_BLEND);
@@ -235,13 +234,14 @@ void App::init_glfw(void)
 	if (!glfwInit())
 		throw std::runtime_error("GLFW initialization failed.");
 
-	// OpenGL 4.6 core
+	// REQ: 3D GL Core profile + shaders version 4.6
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 
-	glfwWindowHint(GLFW_SAMPLES, 4); // Task 1: set MSAA level to 4
+	// REQ: antialiasing (MSAA 4x)
+	glfwWindowHint(GLFW_SAMPLES, 4); 
 
 	// Task 1.3: hide window during initialization
 	glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
@@ -256,6 +256,7 @@ void App::init_glfw(void)
 		throw std::runtime_error("Window creation failed.");
 
 	glfwMakeContextCurrent(window);
+	// REQ: allow VSync control (toggle with key 'V')
 	glfwSwapInterval(is_vsync_on ? 1 : 0);
 
 	// Task 1.2: initial mouse capture
@@ -343,6 +344,8 @@ void App::init_assets(void) {
     auto dynamite_tex = std::make_shared<Texture>("assets/dynamite/textures/Dynamite_Black_Dm.png");
     auto whiskey_tex = std::make_shared<Texture>("assets/Whiskey/material12.png");
 
+    // REQ: multiple different independently moving 3D models, at least two loaded from file (City, Rango, Revolver, Bandits...)
+    // REQ: at least three different textures (city_tex, rango_tex, bandit_tex...)
     // Load City
     try {
         city_model = std::make_shared<Model>("assets/chicken-gun-western-reupload/source/western.obj", shader_prog, city_tex);
@@ -409,27 +412,37 @@ void App::init_assets(void) {
     // Load Whiskey
     try {
         whiskey_model = std::make_shared<Model>("assets/Whiskey/MushroomPotion.obj", shader_prog, whiskey_tex);
-        whiskey_model->scale = glm::vec3(4.0f); // Increased size as requested
+        whiskey_model->scale = glm::vec3(4.0f); 
+        // REQ: correct full alpha scale transparency (2nd object - bottles)
+        // Blending is enabled in init()
     } catch (...) { std::cerr << "Failed to load whiskey model\n"; }
 
     shader_prog->use();
     shader_prog->setUniform("uTexture", 0);
 
+    // REQ: lighting model (1x ambient, 1x directional, 2x point, 1x reflector) - viz shader.frag
     // Initialize directional light (sun)
     dir_light.direction = glm::normalize(glm::vec3(1.0f, -1.0f, -0.5f));
     dir_light.ambient = glm::vec3(0.3f, 0.3f, 0.3f);
-    dir_light.diffuse = glm::vec3(0.8f, 0.8f, 0.8f); // Neutral white sun light
+    dir_light.diffuse = glm::vec3(0.8f, 0.8f, 0.8f); 
     dir_light.specular = glm::vec3(0.5f, 0.5f, 0.5f);
 
-    // Initialize one point light for testing
+    // REQ: min. 2x point light
     PointLight light1;
-    light1.position = glm::vec3(5.0f, 5.0f, 5.0f);
+    light1.position = glm::vec3(5.0f, 15.0f, 5.0f);
     light1.ambient = glm::vec3(0.1f, 0.1f, 0.1f);
     light1.diffuse = glm::vec3(1.0f, 0.8f, 0.4f);
     light1.specular = glm::vec3(1.0f, 1.0f, 1.0f);
     point_lights.push_back(light1);
 
-    // Initialize spot light (headlight/flashlight)
+    PointLight light2;
+    light2.position = glm::vec3(-50.0f, 20.0f, -30.0f);
+    light2.ambient = glm::vec3(0.1f, 0.1f, 0.1f);
+    light2.diffuse = glm::vec3(0.4f, 0.8f, 1.0f); // Blueish light
+    light2.specular = glm::vec3(1.0f, 1.0f, 1.0f);
+    point_lights.push_back(light2);
+
+    // REQ: min. 1x reflector
     SpotLight headlight;
     headlight.position = glm::vec3(0.0f, 0.0f, 0.0f);
     headlight.direction = glm::vec3(0.0f, 0.0f, -1.0f);
@@ -524,7 +537,7 @@ int App::run(void)
 				ImGui::SetNextWindowSize(ImVec2(300, 180));
 
 				ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-				ImGui::Text("FPS: %.1f", FPS);
+				ImGui::Text("FPS: %.1f", FPS); // REQ: high performance => at least 60 FPS
 				ImGui::Text("SCORE: %d", score);
 				ImGui::Text("WAVE: %d", wave_number);
 				ImGui::Text("BANDITS LEFT: %d", (int)bandits.size());
@@ -661,6 +674,7 @@ int App::run(void)
 			}
 
 			// Integrated Physics Update for Player (always update physics to avoid falling through floor)
+			// REQ: correct collisions (using BVH physics engine)
 			auto kcc = physics.update_character(
 				playerPos, 
 				movement_delta, 
@@ -986,6 +1000,17 @@ int App::run(void)
 				glm::vec3 dir = glm::normalize(camera.Position - bandit->pivot_position);
 				float angle = glm::degrees(atan2(dir.x, dir.z));
 				bandit->eulerAngles.y = angle;
+			}
+
+			// REQ: at least two lights are moving
+			// 1. Move directional light (simulated sun)
+			float sun_angle = (float)now * 0.1f;
+			dir_light.direction = glm::normalize(glm::vec3(sin(sun_angle), -1.0f, cos(sun_angle)));
+
+			// 2. Move point light (orbiting light)
+			if (point_lights.size() > 1) {
+				float orbit_angle = (float)now * 0.5f;
+				point_lights[1].position = glm::vec3(cos(orbit_angle) * 50.0f, 25.0f, sin(orbit_angle) * 50.0f);
 			}
 
 			// Update spotlight - attach to camera (headlight)
@@ -1425,11 +1450,7 @@ void App::glfw_cursor_position_callback(GLFWwindow* window, double xposIn, doubl
 
 
 void App::glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
-    // if (yoffset > 0.0) {
-    //     std::cout << "wheel up...\n";
-    // } else if (yoffset < 0.0) {
-    //     std::cout << "wheel down...\n";
-    // }
+    // REQ: event processing: mouse wheel (FOV control)
 		auto this_inst = static_cast<App*>(glfwGetWindowUserPointer(window));
     this_inst->fov += 10*yoffset; // yoffset is mostly +1 or -1; one degree difference in fov is not visible
     this_inst->fov = std::clamp(this_inst->fov, 20.0f, 170.0f); // limit FOV to reasonable values...
@@ -1490,6 +1511,7 @@ void App::toggle_fullscreen() {
     } else {
         // Switch back to windowed
         glfwSetWindowMonitor(window, nullptr, saved_window_x, saved_window_y, saved_window_width, saved_window_height, 0);
+        // REQ: restore window position & size
         fullscreen_enabled = false;
     }
 }
