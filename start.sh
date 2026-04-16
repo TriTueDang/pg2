@@ -61,4 +61,5 @@ echo "------------------------------------------"
 echo "STEP 3: RUNNING GAME"
 echo "------------------------------------------"
 echo "Starting Chicken Gun Story..."
-$EXE
+# Task: Force high-performance GPU (NVIDIA & AMD Prime)
+__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia DRI_PRIME=1 $EXE

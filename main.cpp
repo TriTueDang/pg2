@@ -1,5 +1,12 @@
-// icp.cpp
-// author: JJ
+// --- High Performance GPU selection (Windows) -------------------------------
+#ifdef _WIN32
+extern "C" {
+	__declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
+	__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+#endif
+
+// main implementation
 
 #include <iostream>
 #include <chrono>

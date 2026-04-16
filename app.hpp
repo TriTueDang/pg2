@@ -301,6 +301,8 @@ private:
     void render_skybox();
     void render_billboards();
     GLuint post_process_vao = 0;
+    GLuint msaa_fbo = 0, msaa_color_rbo = 0, msaa_depth_rbo = 0;
+    bool msaa_dirty = false; // Flag to recreate FBOs if MSAA state changes
     void render_post_process();
     void render_particles();
     GLuint load_cubemap(std::vector<std::string> faces);

@@ -107,7 +107,22 @@ public:
         return world_triangles;
     }
 
-    void draw(bool use_shader = true, std::shared_ptr<ShaderProgram> external_shader = nullptr) {
+    struct Frustum {
+        glm::vec4 planes[6]; // Left, Right, Bottom, Top, Near, Far
+    };
+
+    static bool is_aabb_in_frustum(const Frustum& f, glm::vec3 min, glm::vec3 max) {
+        for (int i = 0; i < 6; i++) {
+            glm::vec3 p = min;
+            if (f.planes[i].x >= 0) p.x = max.x;
+            if (f.planes[i].y >= 0) p.y = max.y;
+            if (f.planes[i].z >= 0) p.z = max.z;
+            if (glm::dot(f.planes[i], glm::vec4(p, 1.0f)) < 0) return false;
+        }
+        return true;
+    }
+
+    void draw(bool use_shader = true, std::shared_ptr<ShaderProgram> external_shader = nullptr, const Frustum* frustum = nullptr) {
         // Calculate base model matrix for the whole model
         glm::mat4 T = glm::translate(glm::mat4(1.0f), pivot_position);
         glm::mat4 R = glm::yawPitchRoll(glm::radians(eulerAngles.y), glm::radians(eulerAngles.x), glm::radians(eulerAngles.z));
@@ -116,21 +131,45 @@ public:
 
         // call draw() on mesh (all meshes)
         for (auto const& mesh_pkg : meshes) {
-            auto active_shader = use_shader ? mesh_pkg.shader : external_shader;
-
-            if (use_shader && active_shader) {
-                active_shader->use(); // select proper shader
-            }
-            
             // Calculate mesh-local transformation
             glm::mat4 mT = glm::translate(glm::mat4(1.0f), mesh_pkg.origin);
             glm::mat4 mR = glm::yawPitchRoll(glm::radians(mesh_pkg.eulerAngles.y), glm::radians(mesh_pkg.eulerAngles.x), glm::radians(mesh_pkg.eulerAngles.z));
             glm::mat4 mS = glm::scale(glm::mat4(1.0f), mesh_pkg.scale);
             glm::mat4 mesh_local_matrix = mT * mR * mS;
+            glm::mat4 final_model_matrix = model_matrix * mesh_local_matrix;
+
+            // --- PER-MESH FRUSTUM CULLING (Optimized 8-corner transformation) ---
+            if (frustum) {
+                glm::vec3 corners[8] = {
+                    mesh_pkg.mesh->aabb.min,
+                    glm::vec3(mesh_pkg.mesh->aabb.max.x, mesh_pkg.mesh->aabb.min.y, mesh_pkg.mesh->aabb.min.z),
+                    glm::vec3(mesh_pkg.mesh->aabb.min.x, mesh_pkg.mesh->aabb.max.y, mesh_pkg.mesh->aabb.min.z),
+                    glm::vec3(mesh_pkg.mesh->aabb.max.x, mesh_pkg.mesh->aabb.max.y, mesh_pkg.mesh->aabb.min.z),
+                    glm::vec3(mesh_pkg.mesh->aabb.min.x, mesh_pkg.mesh->aabb.min.y, mesh_pkg.mesh->aabb.max.z),
+                    glm::vec3(mesh_pkg.mesh->aabb.max.x, mesh_pkg.mesh->aabb.min.y, mesh_pkg.mesh->aabb.max.z),
+                    glm::vec3(mesh_pkg.mesh->aabb.min.x, mesh_pkg.mesh->aabb.max.y, mesh_pkg.mesh->aabb.max.z),
+                    mesh_pkg.mesh->aabb.max
+                };
+
+                glm::vec3 worldMin(1e10f), worldMax(-1e10f);
+                for(int i=0; i<8; i++) {
+                    glm::vec3 p = glm::vec3(final_model_matrix * glm::vec4(corners[i], 1.0f));
+                    worldMin = glm::min(worldMin, p);
+                    worldMax = glm::max(worldMax, p);
+                }
+
+                if (!is_aabb_in_frustum(*frustum, worldMin, worldMax)) {
+                    continue; // Skip this mesh!
+                }
+            }
+
+            auto active_shader = use_shader ? mesh_pkg.shader : external_shader;
 
             if (active_shader) {
+                // Only call use() if we are using individual mesh shaders
+                if (use_shader) active_shader->use();
                 // Set final model matrix uniform
-                active_shader->setUniform("uM_m", model_matrix * mesh_local_matrix);
+                active_shader->setUniform("uM_m", final_model_matrix);
                 active_shader->setUniform("uUseInstancing", false);
             }
 

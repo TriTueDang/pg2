@@ -12,9 +12,15 @@
 #include "Texture.hpp"
 #include <memory>
 
+    struct AABB {
+        glm::vec3 min{1e10f};
+        glm::vec3 max{-1e10f};
+    };
+
 class Mesh: private NonCopyable
 {
 public:
+    AABB aabb;
     // force attribute slots in shaders for all meshes, shaders etc.
     static constexpr GLuint attribute_location_position{0};
     static constexpr GLuint attribute_location_normal{1};
@@ -29,6 +35,10 @@ public:
     // Simple mesh from vertices
     Mesh(std::vector<Vertex> const &vertices, GLenum primitive_type) : primitive_type_{primitive_type}, vertices_{vertices}
     {
+        for (const auto& v : vertices_) {
+            aabb.min = glm::min(aabb.min, v.Position);
+            aabb.max = glm::max(aabb.max, v.Position);
+        }
         // REQ: no DSA (Direct State Access) instafail => use DSA (glCreate*, glNamed*, glVertexArray*)
         glCreateVertexArrays(1, &vao_);
         glCreateBuffers(1, &vbo_);

@@ -1,7 +1,3 @@
-// app.cpp
-// Main application implementation for the pg2 project
-// author: JJ
-
 // --- Standard library headers ------------------------------------------------
 #include <iostream>   // i/o streams
 #include <fstream>    // file input/output (used by JSON loader)
@@ -319,7 +315,10 @@ void App::print_gl_info()
 	std::cout << "OpenGL Vendor:   " << glGetString(GL_VENDOR) << std::endl;
 	std::cout << "OpenGL Renderer: " << glGetString(GL_RENDERER) << std::endl;
 	std::cout << "OpenGL Version:  " << glGetString(GL_VERSION) << std::endl;
-	std::cout << "GLSL Version:    " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
+	    std::cout << "GLSL Version:    " << glGetString(GL_SHADING_LANGUAGE_VERSION) << "\n";
+    // Explicitly disable debug spam to clear the terminal for FPS logs
+    glDisable(GL_DEBUG_OUTPUT);
+    std::cout << "Initialized...\n";
 }
 
 void App::print_glfw_info(void)
@@ -551,7 +550,11 @@ int App::run(void)
 				ImGui::SetNextWindowSize(ImVec2(300, 180));
 
 				ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-				ImGui::Text("FPS: %.1f", FPS); // REQ: high performance => at least 60 FPS
+				ImGui::Text("Chicken Gun Story (AZDO Edition)");
+                ImGui::Separator();
+                ImGui::Text("FPS: %.1f", FPS);
+                ImGui::Separator();
+				ImGui::Text("Health: %.1f %%", player_health);
 				ImGui::Text("SCORE: %d", score);
 				ImGui::Text("WAVE: %d", wave_number);
 				ImGui::Text("BANDITS LEFT: %d", (int)bandits.size());
@@ -1066,10 +1069,20 @@ int App::run(void)
 			// RENDER: GL drawCalls
 			//
 
+            // Handle FBO recreation if MSAA state changed
+            if (msaa_dirty) {
+                init_fbo();
+            }
+
             // cv07: Redirect rendering to FBO if post-processing is enabled
             if (show_post_process) {
-                glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-                glViewport(0, 0, width, height); // Explicitly set viewport for FBO (CV best practice)
+                // If MSAA is on, draw to multisampled buffer first
+                if (is_multisample_on && msaa_fbo != 0) {
+                    glBindFramebuffer(GL_FRAMEBUFFER, msaa_fbo);
+                } else {
+                    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+                }
+                glViewport(0, 0, width, height); 
             } else {
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);
                 glViewport(0, 0, width, height); 
@@ -1085,11 +1098,18 @@ int App::run(void)
 			float tri_b = (float)sin(now * 0.5f) * 0.5f + 0.5f;
 
 			//########## create and set View Matrix according to camera settings  ##########
-			shader_prog->use(); // VZDY musitme aktivovat nas shader pred kreslenim, protoze ImGui (kreslene na konci smycky) prehazuje na svuj shader!
+			shader_prog->use();
 			shader_prog->setUniform("uV_m", camera.GetViewMatrix());
 			shader_prog->setUniform("uP_m", projection_matrix);
 
-			// Set up DIRECTIONAL LIGHT uniforms
+            // Extract frustum once for all opaque objects
+            App::Frustum app_frustum = extract_frustum(projection_matrix * camera.GetViewMatrix());
+            auto frustum_ptr = reinterpret_cast<Model::Frustum*>(&app_frustum);
+
+			// draw all (pokud bys mel objekty v poli scene)
+			for (auto& [name, model_obj] : scene) {
+				model_obj.draw(true, nullptr, frustum_ptr);
+			}
 			shader_prog->setUniform("dir_light_direction", dir_light.direction);
 			shader_prog->setUniform("dir_light_ambient", dir_light.ambient);
 			shader_prog->setUniform("dir_light_diffuse", dir_light.diffuse);
@@ -1115,10 +1135,7 @@ int App::run(void)
 				shader_prog->setUniform("spot_light_outer_cutoff", spot_lights[0].outer_cutoff);
 			}
 
-			// draw all (pokud bys mel objekty v poli scene)
-			for (auto& [name, model_obj] : scene) {
-				model_obj.draw();
-			}
+			// (Removed redundant scene iteration to prevent potential double-draws)
 
 			// Draw City
 			if (city_model) {
@@ -1126,7 +1143,7 @@ int App::run(void)
                 shader_prog->setUniform("uV_m", camera.GetViewMatrix());
                 shader_prog->setUniform("uP_m", projection_matrix);
                 shader_prog->setUniform("uUseInstancing", false);
-				city_model->draw(false, shader_prog); // Draw with static shader
+				city_model->draw(false, shader_prog, frustum_ptr); // Draw with static shader
 			}
 
 			// Draw player (Rango)
@@ -1158,8 +1175,8 @@ int App::run(void)
 
                 // 3. Batch render visible bandits
                 if (!visible_matrices.empty()) {
-                    // Upload matrices to SSBO using glNamedBufferData (or glNamedBufferSubData if we want to be faster)
-                    glNamedBufferData(bandit_ssbo, visible_matrices.size() * sizeof(glm::mat4), visible_matrices.data(), GL_STREAM_DRAW);
+                    // Optimized: Use SubData since we pre-allocated 1000 slots in init_assets
+                    glNamedBufferSubData(bandit_ssbo, 0, visible_matrices.size() * sizeof(glm::mat4), visible_matrices.data());
                     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, bandit_ssbo);
                     
                     bandit_base_model->drawInstanced((GLsizei)visible_matrices.size());
@@ -1234,13 +1251,22 @@ int App::run(void)
 			}
 			*/
 
-			// Draw weapon (last to be on top?)
+			// Draw weapon (removed as requested)
+			/*
 			if (weapon_model) {
 				weapon_model->draw();
 			}
+			*/
 
             // cv08: Draw Skybox LAST (optimized to draw only at depth 1.0)
             render_skybox();
+
+            // --- MSAA RESOLVE ---
+            // If we drew to a multisampled FBO, we must resolve (blit) it to the standard FBO 
+            // before the post-processing shader can sample from it.
+            if (show_post_process && is_multisample_on && msaa_fbo != 0) {
+                glBlitNamedFramebuffer(msaa_fbo, fbo, 0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            }
 
             render_particles(); // Optimized instanced particles
             render_billboards(); // Tumbleweeds
@@ -1267,11 +1293,19 @@ int App::run(void)
 
 			// Time/FPS measurement
 			fps_counter_frames++;
-			if (now - fps_last_displayed >= 1.0) {
-				FPS = fps_counter_frames / (now - fps_last_displayed);
+            double fps_dt = now - fps_last_displayed;
+			if (fps_dt >= 0.5) { // Update FPS variable every 0.5s for ImGui
+				FPS = fps_counter_frames / fps_dt;
+                
+                // Still log to terminal only every 10 seconds
+                static double last_terminal_log = 0.0;
+                if (now - last_terminal_log >= 10.0) {
+				    std::cout << "[Performance] Current Real-time FPS: " << FPS << std::endl;
+                    last_terminal_log = now;
+                }
+
 				fps_last_displayed = now;
 				fps_counter_frames = 0;
-				std::cout << "\r[FPS]" << FPS << "     "; // Compare: FPS with/without ImGUI
 			}
 		}
 	}
@@ -1373,9 +1407,10 @@ void App::glfw_key_callback(GLFWwindow* window, int key, int scancode, int actio
 		case GLFW_KEY_M:
 			// Task 1: Toggle Multisampling
 			this_inst->is_multisample_on = !this_inst->is_multisample_on;
+			this_inst->msaa_dirty = true; // Queue FBO recreation
 			if (this_inst->is_multisample_on) glEnable(GL_MULTISAMPLE);
 			else glDisable(GL_MULTISAMPLE);
-			std::cout << "Multisampling: " << (this_inst->is_multisample_on ? "ON" : "OFF") << "\n";
+			std::cout << "Multisampling: " << (this_inst->is_multisample_on ? "ON" : "OFF") << " (FBO update queued)\n";
 			break;
 		case GLFW_KEY_O:
 			// Toggle Post-Processing
@@ -1646,6 +1681,7 @@ void App::spawn_bandit_wave(int count) {
               << ", Health: " << current_health << ", Speed: " << bandit_speed << "\n";
 
     // Clear old state for fresh wave
+    bandits.clear();
     bandit_states.clear();
     bandit_target_positions.clear();
     bandit_state_timers.clear();
@@ -1752,33 +1788,51 @@ void App::update_path_visualization() {
 }
 
 void App::init_fbo() {
-    // Cleanup old resources if they exist
+    // Cleanup old resources
     if (fbo != 0) glDeleteFramebuffers(1, &fbo);
     if (fbo_texture != 0) glDeleteTextures(1, &fbo_texture);
     if (rbo != 0) glDeleteRenderbuffers(1, &rbo);
+    if (msaa_fbo != 0) glDeleteFramebuffers(1, &msaa_fbo);
+    if (msaa_color_rbo != 0) glDeleteRenderbuffers(1, &msaa_color_rbo);
+    if (msaa_depth_rbo != 0) glDeleteRenderbuffers(1, &msaa_depth_rbo);
 
+    // 1. Create the RESOLVE FBO (Standard Texture)
     glCreateFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-
-    // Color texture
     glCreateTextures(GL_TEXTURE_2D, 1, &fbo_texture);
     glTextureStorage2D(fbo_texture, 1, GL_RGB8, width, height);
     glTextureParameteri(fbo_texture, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTextureParameteri(fbo_texture, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    // Use GL_CLAMP_TO_EDGE to avoid tiling/artifacts at edges
     glTextureParameteri(fbo_texture, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTextureParameteri(fbo_texture, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT0, fbo_texture, 0);
 
-    // Depth/Stencil Renderbuffer
+    // Standard depth for resolve FBO (not strictly needed but good for state)
     glCreateRenderbuffers(1, &rbo);
     glNamedRenderbufferStorage(rbo, GL_DEPTH24_STENCIL8, width, height);
     glNamedFramebufferRenderbuffer(fbo, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
 
+    // 2. Create the MSAA FBO (if enabled)
+    if (is_multisample_on) {
+        int samples = 4; // Standard 4x MSAA
+        glCreateFramebuffers(1, &msaa_fbo);
+        
+        glCreateRenderbuffers(1, &msaa_color_rbo);
+        glNamedRenderbufferStorageMultisample(msaa_color_rbo, samples, GL_RGB8, width, height);
+        glNamedFramebufferRenderbuffer(msaa_fbo, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, msaa_color_rbo);
+        
+        glCreateRenderbuffers(1, &msaa_depth_rbo);
+        glNamedRenderbufferStorageMultisample(msaa_depth_rbo, samples, GL_DEPTH24_STENCIL8, width, height);
+        glNamedFramebufferRenderbuffer(msaa_fbo, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, msaa_depth_rbo);
+
+        if (glCheckNamedFramebufferStatus(msaa_fbo, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            std::cerr << "MSAA Framebuffer is not complete!\n";
+    }
+
     if (glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        std::cerr << "Framebuffer is not complete!\n";
+        std::cerr << "Resolve Framebuffer is not complete!\n";
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    msaa_dirty = false;
 }
 
 void App::init_skybox() {
