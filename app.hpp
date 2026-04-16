@@ -95,8 +95,6 @@ private:
     GLFWwindow* window = nullptr;
 
     std::shared_ptr<ShaderProgram> shader_prog;
-    std::shared_ptr<ShaderProgram> waypoint_shader;
-    std::shared_ptr<Model> waypoint_model;
     std::shared_ptr<Model> city_model;
     std::shared_ptr<Model> player_model;
     std::shared_ptr<Model> weapon_model;
@@ -127,6 +125,11 @@ private:
     struct BillboardInstance {
         glm::vec4 worldPos; // xyz=pos, w=scaleX
         glm::vec4 tint_scaleY; // rgb=tint, a=scaleY
+    };
+
+    struct BanditInstance {
+        glm::vec4 pos;      // xyz = position, w = unused
+        glm::vec4 rotScale; // xyz = eulerAngles, w = scale
     };
 
     std::vector<Billboard> billboards;
@@ -253,7 +256,7 @@ private:
     const float dynamite_damage = 40.0f;
     const float dynamite_radius = 12.0f;
 
-    // --- Performance Optimization (AZDO) ---
+    // --- Výkonnostní optimalizace ---
     GLuint bandit_ssbo = 0;
     struct Frustum {
         glm::vec4 planes[6];

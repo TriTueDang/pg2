@@ -2,12 +2,26 @@
 in vec2 TexCoords;
 out vec4 FragColor;
 uniform sampler2D screenTexture;
+uniform sampler2DMS screenTextureMS; 
+uniform bool uUseMSAA;
 uniform float health; // 0.0 to 1.0
 uniform float time;
 
 void main()
 {
-    vec3 color = texture(screenTexture, TexCoords).rgb;
+    vec3 color;
+    if (uUseMSAA) {
+        // FAKT PODROBNÁ OPTIMALIZACE: Manuální resolve 4 vzorků
+        ivec2 texSize = textureSize(screenTextureMS);
+        ivec2 texCoord = ivec2(TexCoords * texSize);
+        vec3 sample0 = texelFetch(screenTextureMS, texCoord, 0).rgb;
+        vec3 sample1 = texelFetch(screenTextureMS, texCoord, 1).rgb;
+        vec3 sample2 = texelFetch(screenTextureMS, texCoord, 2).rgb;
+        vec3 sample3 = texelFetch(screenTextureMS, texCoord, 3).rgb;
+        color = (sample0 + sample1 + sample2 + sample3) / 4.0;
+    } else {
+        color = texture(screenTexture, TexCoords).rgb;
+    }
 
     // 1. Warm Western Tint
     vec3 warm = vec3(1.15, 1.05, 0.9);

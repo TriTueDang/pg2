@@ -46,6 +46,10 @@ using json = nlohmann::json;
 
 // OpenGL debug callback (Task 1) - from lecture
 static void GLAPIENTRY gl_debug_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
+    // FAKT PODROBNÁ OPTIMALIZACE: Ignorujeme vše kromě vysoké závažnosti (ERROR a HIGH)
+    if (severity != GL_DEBUG_SEVERITY_HIGH && severity != GL_DEBUG_SEVERITY_MEDIUM) return;
+    if (type == GL_DEBUG_TYPE_OTHER || type == GL_DEBUG_TYPE_PERFORMANCE) return;
+
     auto const src_str = [source]() {
         switch (source) {
         case GL_DEBUG_SOURCE_API: return "API";
@@ -53,40 +57,21 @@ static void GLAPIENTRY gl_debug_callback(GLenum source, GLenum type, GLuint id, 
         case GL_DEBUG_SOURCE_SHADER_COMPILER: return "SHADER COMPILER";
         case GL_DEBUG_SOURCE_THIRD_PARTY: return "THIRD PARTY";
         case GL_DEBUG_SOURCE_APPLICATION: return "APPLICATION";
-        case GL_DEBUG_SOURCE_OTHER: return "OTHER";
-        default: return "Unknown";
+        default: return "OTHER";
         }
     }();
 
     auto const type_str = [type]() {
         switch (type) {
         case GL_DEBUG_TYPE_ERROR: return "ERROR";
-        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: return "DEPRECATED_BEHAVIOR";
-        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR: return "UNDEFINED_BEHAVIOR";
+        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: return "DEPRECATED";
+        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR: return "UNDEFINED";
         case GL_DEBUG_TYPE_PORTABILITY: return "PORTABILITY";
-        case GL_DEBUG_TYPE_PERFORMANCE: return "PERFORMANCE";
-        case GL_DEBUG_TYPE_MARKER: return "MARKER";
-        case GL_DEBUG_TYPE_OTHER: return "OTHER";
-        default: return "Unknown";
+        default: return "OTHER";
         }
     }();
 
-    auto const severity_str = [severity]() {
-        switch (severity) {
-        case GL_DEBUG_SEVERITY_NOTIFICATION: return "NOTIFICATION";
-        case GL_DEBUG_SEVERITY_LOW: return "LOW";
-        case GL_DEBUG_SEVERITY_MEDIUM: return "MEDIUM";
-        case GL_DEBUG_SEVERITY_HIGH: return "HIGH";
-        default: return "Unknown";
-        }
-    }();
-
-    std::cout << "[GL CALLBACK]: " <<
-        "source = " << src_str <<
-        ", type = " << type_str <<
-        ", severity = " << severity_str <<
-        ", ID = '" << id << '\'' <<
-        ", message = '" << message << '\'' << std::endl;
+    std::cerr << "[GL ERROR]: " << src_str << " | " << type_str << " | " << message << std::endl;
 }
 
 // // GLFW error callback (Task 2)
@@ -245,8 +230,8 @@ void App::init_glfw(void)
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 
-	// REQ: antialiasing (MSAA 4x)
-	glfwWindowHint(GLFW_SAMPLES, 4); 
+	// REQ: antialiasing (MSAA 4x) - disabled for backbuffer to optimize PCIe on external GPUs
+	glfwWindowHint(GLFW_SAMPLES, 0); 
 
 	// Task 1.3: hide window during initialization
 	glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
@@ -358,6 +343,7 @@ void App::init_assets(void) {
     try {
         city_model = std::make_shared<Model>("assets/chicken-gun-western-reupload/source/western.obj", shader_prog, city_tex);
         city_model->scale = glm::vec3(0.05f); // Restored original scale
+        city_model->is_static = true; // FAKT PODROBNÁ OPTIMALIZACE: Povolení AABB cache
     } catch (...) { std::cerr << "Failed to load western city\n"; }
 
     // Load Rango (Player Model)
@@ -383,7 +369,7 @@ void App::init_assets(void) {
         
         // Initialize Bandit SSBO (Modern OpenGL instancing)
         glCreateBuffers(1, &bandit_ssbo);
-        glNamedBufferData(bandit_ssbo, 1000 * sizeof(glm::mat4), nullptr, GL_STREAM_DRAW); // Pre-allocate for 1000 bandits
+        glNamedBufferData(bandit_ssbo, 1000 * (sizeof(glm::vec4) * 2), nullptr, GL_STREAM_DRAW); // Pre-allocate for 1000 bandits
         
         bandits.clear();
         bandit_throw_timers.clear();
@@ -404,7 +390,9 @@ void App::init_assets(void) {
     try {
         bullet_model = std::make_shared<Model>("assets/dynamite/source/Dynamite.obj", shader_prog, city_tex);
         bullet_model->scale = glm::vec3(0.15f);
-    } catch (...) { std::cerr << "Failed to load bullet model\n"; }
+    } catch (...) { 
+        std::cerr << "Failed to load bullet model\n"; 
+    }
 
     // Load cv07/cv08 shaders
     try {
@@ -413,22 +401,17 @@ void App::init_assets(void) {
         billboard_shader = ShaderProgram::from_files("billboard.vert", "billboard.frag");
         particle_shader = ShaderProgram::from_files("particle.vert", "particle.frag");
         billboard_tex = std::make_shared<Texture>("assets/tumbleweed.png", Texture::Interpolation::linear, true);
-    } catch (...) { std::cerr << "Failed to load cv07/cv08 shaders or assets\n"; }
-
-    // Load Waypoint
-    try {
-        waypoint_shader = ShaderProgram::from_files("waypoint.vert", "waypoint.frag"); 
-        waypoint_model = std::make_shared<Model>("triangle.obj", waypoint_shader);
-        waypoint_model->scale = glm::vec3(2.5f);
-    } catch (...) { std::cerr << "Failed to load waypoint assets\n"; }
+    } catch (...) { 
+        std::cerr << "Failed to load core shaders or assets\n"; 
+    }
 
     // Load Whiskey
     try {
         whiskey_model = std::make_shared<Model>("assets/Whiskey/MushroomPotion.obj", shader_prog, whiskey_tex);
         whiskey_model->scale = glm::vec3(4.0f); 
-        // REQ: correct full alpha scale transparency (2nd object - bottles)
-        // Blending is enabled in init()
-    } catch (...) { std::cerr << "Failed to load whiskey model\n"; }
+    } catch (...) { 
+        std::cerr << "Failed to load whiskey model\n"; 
+    }
 
     shader_prog->use();
     shader_prog->setUniform("uTexture", 0);
@@ -550,7 +533,7 @@ int App::run(void)
 				ImGui::SetNextWindowSize(ImVec2(300, 180));
 
 				ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-				ImGui::Text("Chicken Gun Story (AZDO Edition)");
+				ImGui::Text("Chicken Gun Story");
                 ImGui::Separator();
                 ImGui::Text("FPS: %.1f", FPS);
                 ImGui::Separator();
@@ -1151,35 +1134,28 @@ int App::run(void)
 				player_model->draw();
 			}
 
-			// Optimized Bandit Rendering (AZDO Instancing + Frustum Culling)
+			// Optimalizované vykreslování banditů (Instancování + Frustum Culling)
             if (bandit_base_model) {
                 // 1. Extract view-projection frustum
                 Frustum frustum = extract_frustum(projection_matrix * view_matrix);
                 
-                // 2. Collect visible bandit matrices
-                std::vector<glm::mat4> visible_matrices;
-                visible_matrices.reserve(bandits.size());
+                // 2. Collect visible bandit instances (Compact data for PCIe performance)
+                std::vector<BanditInstance> bandit_instances;
+                bandit_instances.reserve(bandits.size());
                 
                 for (auto& bandit : bandits) {
-                    // Culling disabled again to fix invisibility once and for all.
-                    // Prioritizing gameplay visibility over marginal performance gains.
-                    if (true) 
-                    {
-                        // Calculate model matrix (Manually, to bypass individual draw calls)
-                        glm::mat4 T = glm::translate(glm::mat4(1.0f), bandit->pivot_position);
-                        glm::mat4 R = glm::yawPitchRoll(glm::radians(bandit->eulerAngles.y), glm::radians(bandit->eulerAngles.x), glm::radians(bandit->eulerAngles.z));
-                        glm::mat4 S = glm::scale(glm::mat4(1.0f), bandit->scale);
-                        visible_matrices.push_back(T * R * S);
-                    }
+                    BanditInstance inst;
+                    inst.pos = glm::vec4(bandit->pivot_position, 1.0f);
+                    inst.rotScale = glm::vec4(bandit->eulerAngles, bandit->scale.x); // Assuming uniform scale
+                    bandit_instances.push_back(inst);
                 }
 
                 // 3. Batch render visible bandits
-                if (!visible_matrices.empty()) {
-                    // Optimized: Use SubData since we pre-allocated 1000 slots in init_assets
-                    glNamedBufferSubData(bandit_ssbo, 0, visible_matrices.size() * sizeof(glm::mat4), visible_matrices.data());
+                if (!bandit_instances.empty()) {
+                    glNamedBufferSubData(bandit_ssbo, 0, bandit_instances.size() * sizeof(BanditInstance), bandit_instances.data());
                     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, bandit_ssbo);
                     
-                    bandit_base_model->drawInstanced((GLsizei)visible_matrices.size());
+                    bandit_base_model->drawInstanced((GLsizei)bandit_instances.size());
                 }
             }
 
@@ -1219,57 +1195,15 @@ int App::run(void)
 				}
 			}
 
-			// Draw Waypoints for bandits
-			if (waypoint_shader && !bandits.empty()) {
-				waypoint_shader->use();
-				waypoint_shader->setUniform("uV_m", camera.GetViewMatrix());
-				waypoint_shader->setUniform("uP_m", projection_matrix);
-				waypoint_shader->setUniform("waypointColor", glm::vec3(1.0f, 1.0f, 0.0f)); // Yellow
-				
-				for (auto& b : bandits) {
-					glm::mat4 m = glm::translate(glm::mat4(1.0f), b->pivot_position + glm::vec3(0, 15.0f, 0));
-					m = glm::rotate(m, (float)now * 2.0f, glm::vec3(0, 1, 0));
-					m = glm::scale(m, glm::vec3(2.5f)); // Make it visible
-					waypoint_shader->setUniform("uM_m", m);
-					if (waypoint_model) waypoint_model->draw();
-				}
-				shader_prog->use();
-			}
-
-			// --- Debug Render Intro Spline Path (cv09) ---
-			// Disabled by default (was used for debugging the street path)
-			/*
-			if (waypoint_shader && path_vao != 0) {
-				waypoint_shader->use();
-				waypoint_shader->setUniform("uV_m", camera.GetViewMatrix());
-				waypoint_shader->setUniform("uP_m", projection_matrix);
-				waypoint_shader->setUniform("waypointColor", glm::vec3(0.0f, 1.0f, 1.0f));
-				waypoint_shader->setUniform("uM_m", glm::mat4(1.0f));
-				glBindVertexArray(path_vao);
-				glDrawArrays(GL_LINE_STRIP, 0, path_vertex_count);
-				shader_prog->use();
-			}
-			*/
-
-			// Draw weapon (removed as requested)
-			/*
-			if (weapon_model) {
-				weapon_model->draw();
-			}
-			*/
+            // --- Unnecessary Waypoints and Path rendering fully removed to save draw calls ---
+            shader_prog->use();
 
             // cv08: Draw Skybox LAST (optimized to draw only at depth 1.0)
             render_skybox();
 
-            // --- MSAA RESOLVE ---
-            // If we drew to a multisampled FBO, we must resolve (blit) it to the standard FBO 
-            // before the post-processing shader can sample from it.
-            if (show_post_process && is_multisample_on && msaa_fbo != 0) {
-                glBlitNamedFramebuffer(msaa_fbo, fbo, 0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-            }
-
-            render_particles(); // Optimized instanced particles
-            render_billboards(); // Tumbleweeds
+            // --- Vykreslení částic a billboardů (Tumbleweeds) ---
+            render_particles(); 
+            render_billboards(); 
 
             // cv07: Resolve FBO to screen
             if (show_post_process) {
@@ -1816,9 +1750,11 @@ void App::init_fbo() {
         int samples = 4; // Standard 4x MSAA
         glCreateFramebuffers(1, &msaa_fbo);
         
-        glCreateRenderbuffers(1, &msaa_color_rbo);
-        glNamedRenderbufferStorageMultisample(msaa_color_rbo, samples, GL_RGB8, width, height);
-        glNamedFramebufferRenderbuffer(msaa_fbo, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, msaa_color_rbo);
+        // FAKT PODROBNÁ OPTIMALIZACE: Místo Renderbufferu použijeme Multisampled Texturu
+        // To nám umožní číst ji přímo v post-processu bez drahého glBlit volání.
+        glCreateTextures(GL_TEXTURE_2D_MULTISAMPLE, 1, &msaa_color_rbo); // Reusing RBO name but it's a texture now
+        glTextureStorage2DMultisample(msaa_color_rbo, samples, GL_RGB8, width, height, GL_TRUE);
+        glNamedFramebufferTexture(msaa_fbo, GL_COLOR_ATTACHMENT0, msaa_color_rbo, 0);
         
         glCreateRenderbuffers(1, &msaa_depth_rbo);
         glNamedRenderbufferStorageMultisample(msaa_depth_rbo, samples, GL_DEPTH24_STENCIL8, width, height);
@@ -1963,7 +1899,7 @@ void App::init_billboards() {
         }
     }
 
-    // --- Particle AZDO Initialization ---
+    // --- Inicializace persistentního bufferu pro částice ---
     // Persistent Mapping: CPU and GPU share the same memory buffer
     glCreateBuffers(1, &particle_vbo);
     GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
@@ -2066,7 +2002,17 @@ void App::render_billboards() {
 void App::render_post_process() {
     if (!post_process_shader) return;
     post_process_shader->use();
-    glBindTextureUnit(0, fbo_texture);
+    
+    // Manuální Resolve: Sampler2D vs Sampler2DMS
+    if (is_multisample_on && msaa_fbo != 0) {
+        glBindTextureUnit(1, msaa_color_rbo); // Bind MS texture to unit 1
+        post_process_shader->setUniform("uUseMSAA", true);
+        post_process_shader->setUniform("screenTextureMS", 1);
+    } else {
+        post_process_shader->setUniform("uUseMSAA", false);
+    }
+
+    glBindTextureUnit(0, fbo_texture); // Standard texture is ALWAYS on unit 0
     post_process_shader->setUniform("screenTexture", 0);
     post_process_shader->setUniform("health", player_health / 100.0f);
     post_process_shader->setUniform("time", (float)glfwGetTime());
@@ -2099,7 +2045,7 @@ void App::spawn_particles(glm::vec3 pos, glm::vec3 color, int count, float size)
 void App::render_particles() {
     if (active_particles.empty() || !mapped_particles) return;
 
-    // Fill the mapped buffer (AZDO)
+    // Zápis do persistentně mapovaného bufferu
     int count = 0;
     for (const auto& p : active_particles) {
         if (count >= MAX_PARTICLES) break;

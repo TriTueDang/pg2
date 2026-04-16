@@ -33,9 +33,15 @@ public:
         glm::vec3 scale;
         std::shared_ptr<Texture> texture;
 
+        // FAKT PODROBNÁ OPTIMALIZACE: Cachování pro frustum culling
+        AABB cached_world_aabb;
+        bool aabb_ready = false;
+
         mesh_package(std::shared_ptr<Mesh> m, std::shared_ptr<ShaderProgram> s, glm::vec3 o, glm::vec3 e, glm::vec3 sc, std::shared_ptr<Texture> t = nullptr)
             : mesh(m), shader(s), origin(o), eulerAngles(e), scale(sc), texture(t) {}
     };
+
+    bool is_static = false; // Flag to enable caching
     std::vector<mesh_package> meshes;
     
     Model() = default;
@@ -130,7 +136,7 @@ public:
         glm::mat4 model_matrix = T * R * S;
 
         // call draw() on mesh (all meshes)
-        for (auto const& mesh_pkg : meshes) {
+        for (auto& mesh_pkg : meshes) {
             // Calculate mesh-local transformation
             glm::mat4 mT = glm::translate(glm::mat4(1.0f), mesh_pkg.origin);
             glm::mat4 mR = glm::yawPitchRoll(glm::radians(mesh_pkg.eulerAngles.y), glm::radians(mesh_pkg.eulerAngles.x), glm::radians(mesh_pkg.eulerAngles.z));
@@ -138,27 +144,31 @@ public:
             glm::mat4 mesh_local_matrix = mT * mR * mS;
             glm::mat4 final_model_matrix = model_matrix * mesh_local_matrix;
 
-            // --- PER-MESH FRUSTUM CULLING (Optimized 8-corner transformation) ---
+            // --- PER-MESH FRUSTUM CULLING (Optimized Static AABB Caching) ---
             if (frustum) {
-                glm::vec3 corners[8] = {
-                    mesh_pkg.mesh->aabb.min,
-                    glm::vec3(mesh_pkg.mesh->aabb.max.x, mesh_pkg.mesh->aabb.min.y, mesh_pkg.mesh->aabb.min.z),
-                    glm::vec3(mesh_pkg.mesh->aabb.min.x, mesh_pkg.mesh->aabb.max.y, mesh_pkg.mesh->aabb.min.z),
-                    glm::vec3(mesh_pkg.mesh->aabb.max.x, mesh_pkg.mesh->aabb.max.y, mesh_pkg.mesh->aabb.min.z),
-                    glm::vec3(mesh_pkg.mesh->aabb.min.x, mesh_pkg.mesh->aabb.min.y, mesh_pkg.mesh->aabb.max.z),
-                    glm::vec3(mesh_pkg.mesh->aabb.max.x, mesh_pkg.mesh->aabb.min.y, mesh_pkg.mesh->aabb.max.z),
-                    glm::vec3(mesh_pkg.mesh->aabb.min.x, mesh_pkg.mesh->aabb.max.y, mesh_pkg.mesh->aabb.max.z),
-                    mesh_pkg.mesh->aabb.max
-                };
+                if (!mesh_pkg.aabb_ready || !is_static) {
+                    glm::vec3 corners[8] = {
+                        mesh_pkg.mesh->aabb.min,
+                        glm::vec3(mesh_pkg.mesh->aabb.max.x, mesh_pkg.mesh->aabb.min.y, mesh_pkg.mesh->aabb.min.z),
+                        glm::vec3(mesh_pkg.mesh->aabb.min.x, mesh_pkg.mesh->aabb.max.y, mesh_pkg.mesh->aabb.min.z),
+                        glm::vec3(mesh_pkg.mesh->aabb.max.x, mesh_pkg.mesh->aabb.max.y, mesh_pkg.mesh->aabb.min.z),
+                        glm::vec3(mesh_pkg.mesh->aabb.min.x, mesh_pkg.mesh->aabb.min.y, mesh_pkg.mesh->aabb.max.z),
+                        glm::vec3(mesh_pkg.mesh->aabb.max.x, mesh_pkg.mesh->aabb.min.y, mesh_pkg.mesh->aabb.max.z),
+                        glm::vec3(mesh_pkg.mesh->aabb.min.x, mesh_pkg.mesh->aabb.max.y, mesh_pkg.mesh->aabb.max.z),
+                        mesh_pkg.mesh->aabb.max
+                    };
 
-                glm::vec3 worldMin(1e10f), worldMax(-1e10f);
-                for(int i=0; i<8; i++) {
-                    glm::vec3 p = glm::vec3(final_model_matrix * glm::vec4(corners[i], 1.0f));
-                    worldMin = glm::min(worldMin, p);
-                    worldMax = glm::max(worldMax, p);
+                    glm::vec3 worldMin(1e10f), worldMax(-1e10f);
+                    for(int i=0; i<8; i++) {
+                        glm::vec3 p = glm::vec3(final_model_matrix * glm::vec4(corners[i], 1.0f));
+                        worldMin = glm::min(worldMin, p);
+                        worldMax = glm::max(worldMax, p);
+                    }
+                    mesh_pkg.cached_world_aabb = { worldMin, worldMax };
+                    mesh_pkg.aabb_ready = true;
                 }
 
-                if (!is_aabb_in_frustum(*frustum, worldMin, worldMax)) {
+                if (!is_aabb_in_frustum(*frustum, mesh_pkg.cached_world_aabb.min, mesh_pkg.cached_world_aabb.max)) {
                     continue; // Skip this mesh!
                 }
             }

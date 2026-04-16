@@ -15,7 +15,7 @@ fi
 echo "Building project using preset: $PRESET..."
 
 # Pokus o konfiguraci
-cmake --preset "$PRESET"
+cmake --preset "$PRESET" -DCMAKE_BUILD_TYPE=Release
 if [ $? -ne 0 ]; then
     echo "Configuration failed! Cleaning build directory and retrying..."
     rm -rf build

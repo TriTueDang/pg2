@@ -10,9 +10,34 @@ uniform mat4 uP_m = mat4(1.0);
 uniform bool uUseInstancing = false;
 uniform mat4 uMeshLocal = mat4(1.0);
 
-layout(std430, binding = 0) buffer InstanceBuffer {
-    mat4 instances[];
+struct BanditInstance {
+    vec4 pos;      // xyz = position
+    vec4 rotScale; // xyz = eulerAngles, w = scale
 };
+
+layout(std430, binding = 0) buffer InstanceBuffer {
+    BanditInstance instances[];
+};
+
+mat4 buildModelMatrix(BanditInstance inst) {
+    vec3 p = inst.pos.xyz;
+    vec3 r = radians(inst.rotScale.xyz);
+    float s = inst.rotScale.w;
+
+    // Rotation matrices
+    float cx = cos(r.x), sx = sin(r.x);
+    float cy = cos(r.y), sy = sin(r.y);
+    float cz = cos(r.z), sz = sin(r.z);
+
+    mat4 rotX = mat4(1, 0, 0, 0, 0, cx, sx, 0, 0, -sx, cx, 0, 0, 0, 0, 1);
+    mat4 rotY = mat4(cy, 0, -sy, 0, 0, 1, 0, 0, sy, 0, cy, 0, 0, 0, 0, 1);
+    mat4 rotZ = mat4(cz, sz, 0, 0, -sz, cz, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+
+    // Combining matrices: Translate * RotateY * RotateX * RotateZ * Scale (matching glm::yawPitchRoll order)
+    // Note: GLSL uses column-major matrices.
+    mat4 model = mat4(s, 0, 0, 0,  0, s, 0, 0,  0, 0, s, 0,  p.x, p.y, p.z, 1);
+    return model * rotY * rotX * rotZ;
+}
 
 // Light properties - directional
 uniform vec3 dir_light_direction;
@@ -51,7 +76,7 @@ out VS_OUT {
 void main()
 {
     // Determine model matrix
-    mat4 model = uUseInstancing ? instances[gl_InstanceID] * uMeshLocal : uM_m;
+    mat4 model = uUseInstancing ? buildModelMatrix(instances[gl_InstanceID]) * uMeshLocal : uM_m;
     
     gl_Position = uP_m * uV_m * model * vec4(aPos, 1.0);
     
