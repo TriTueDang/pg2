@@ -9,4 +9,5 @@ uniform bool uUseInstancing;
 void main()
 {
     gl_Position = uP_m * uV_m * uM_m * vec4(aPos, 1.0);
+    if(uUseInstancing) gl_Position.z += 0.0; else gl_Position.z += 0.0;
 }

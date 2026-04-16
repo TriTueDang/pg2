@@ -166,6 +166,15 @@ bool App::init() {
 		// Initialize OpenCV (if needed)
 		init_opencv();
 
+        // Performance: Pre-calculate light uniform names to avoid per-frame allocations
+        for (int i = 0; i < 3; i++) {
+            std::string idx = std::to_string(i);
+            point_light_pos_names.push_back("point_light_position[" + idx + "]");
+            point_light_amb_names.push_back("point_light_ambient[" + idx + "]");
+            point_light_diff_names.push_back("point_light_diffuse[" + idx + "]");
+            point_light_spec_names.push_back("point_light_specular[" + idx + "]");
+        }
+
         // Task 1.3: show window after all is loaded
         glfwShowWindow(window);
 
@@ -360,7 +369,7 @@ void App::init_assets(void) {
 
     try {
         weapon_model = std::make_shared<Model>("assets/38-special-revolver/source/rev_anim.obj.obj", shader_prog, revolver_tex);
-        weapon_model->scale = glm::vec3(0.015f); // Increased scale for visibility
+        weapon_model->scale = glm::vec3(0.05f); // Radical scale increase for guaranteed visibility
     } catch (...) { std::cerr << "Failed to load revolver\n"; }
 
     // Build BVH physics for the city immediately after loading city model
@@ -556,9 +565,10 @@ int App::run(void)
 				// Health Bar
 				ImGui::Spacing();
 				ImGui::Text("HEALTH");
-				ImVec4 health_color = ImVec4(1.0f - (player_health / 100.0f), player_health / 100.0f, 0.0f, 1.0f);
+                float hp_normalized = std::clamp(player_health / 100.0f, 0.0f, 1.0f);
+				ImVec4 health_color = ImVec4(1.0f - hp_normalized, hp_normalized, 0.0f, 1.0f);
 				ImGui::PushStyleColor(ImGuiCol_PlotHistogram, health_color);
-				ImGui::ProgressBar(player_health / 100.0f, ImVec2(-1, 0), "");
+				ImGui::ProgressBar(hp_normalized, ImVec2(-1, 0), "");
 				ImGui::PopStyleColor();
 
 				if (is_player_dead) {
@@ -610,6 +620,10 @@ int App::run(void)
 
 			// --- Camera State Machine (cv09) ---
 			if (cam_state == AppCameraState::CINEMATIC) {
+                if (intro_done) { 
+                    cam_state = AppCameraState::GAMEPLAY; 
+                    continue; // Skip this frame's cinematic update and proceed to gameplay
+                }
 				intro_time += delta_t * (intro_spline.getMaxT() / intro_duration);
 				if (intro_time >= intro_spline.getMaxT()) {
 					// Prepare Transition
@@ -630,6 +644,7 @@ int App::run(void)
 				cam_transition.progress += delta_t / cam_transition.duration;
 				if (cam_transition.progress >= 1.0f) {
 					cam_state = AppCameraState::GAMEPLAY;
+                    intro_done = true; // Mark as permanently done
 					invulnerability_timer = 10.0f; // 10 seconds of invulnerability after intro
 				} else {
 					// Smooth interpolation
@@ -1003,9 +1018,9 @@ int App::run(void)
 
 			// Update weapon position
 			if (weapon_model && player_model) {
-				// Use tunable offsets (manually adjusted for visibility)
-                glm::vec3 w_off = glm::vec3(2.5f, 4.5f, -2.0f); 
-                weapon_model->pivot_position = playerPos + camera.Right * w_off.x + camera.Up * w_off.y + camera.Front * w_off.z;
+				// Position weapon relative to player with offset
+				glm::vec3 w_off = glm::vec3(4.0f, 5.0f, 2.0f); // Fast fix visibility
+				weapon_model->pivot_position = playerPos + camera.Right * w_off.x + camera.Up * w_off.y + camera.Front * w_off.z;
 				
 				// Standard rotation based on camera
 				weapon_model->eulerAngles.y = camera.Yaw + weapon_rotation.y;
@@ -1064,9 +1079,6 @@ int App::run(void)
 			// Clear OpenGL canvas
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            // cv08: Draw Skybox FIRST (optimized to draw at depth 1.0)
-            render_skybox();
-
 			// Time-based color animation
 			float tri_r = (float)sin(now) * 0.5f + 0.5f;
 			float tri_g = (float)cos(now) * 0.5f + 0.5f;
@@ -1086,11 +1098,10 @@ int App::run(void)
 			// Set up POINT LIGHTS uniforms
 			shader_prog->setUniform("num_point_lights", (int)point_lights.size());
 			for (size_t i = 0; i < point_lights.size() && i < 3; i++) {
-				std::string idx = std::to_string(i);
-				shader_prog->setUniform("point_light_position[" + idx + "]", point_lights[i].position);
-				shader_prog->setUniform("point_light_ambient[" + idx + "]", point_lights[i].ambient);
-				shader_prog->setUniform("point_light_diffuse[" + idx + "]", point_lights[i].diffuse);
-				shader_prog->setUniform("point_light_specular[" + idx + "]", point_lights[i].specular);
+				shader_prog->setUniform(point_light_pos_names[i], point_lights[i].position);
+				shader_prog->setUniform(point_light_amb_names[i], point_lights[i].ambient);
+				shader_prog->setUniform(point_light_diff_names[i], point_lights[i].diffuse);
+				shader_prog->setUniform(point_light_spec_names[i], point_lights[i].specular);
 			}
 
 			// Set up SPOTLIGHT uniforms
@@ -1109,9 +1120,13 @@ int App::run(void)
 				model_obj.draw();
 			}
 
-			// Draw city
+			// Draw City
 			if (city_model) {
-				city_model->draw();
+                shader_prog->use();
+                shader_prog->setUniform("uV_m", camera.GetViewMatrix());
+                shader_prog->setUniform("uP_m", projection_matrix);
+                shader_prog->setUniform("uUseInstancing", false);
+				city_model->draw(false, shader_prog); // Draw with static shader
 			}
 
 			// Draw player (Rango)
@@ -1129,8 +1144,9 @@ int App::run(void)
                 visible_matrices.reserve(bandits.size());
                 
                 for (auto& bandit : bandits) {
-                    // Optimized culling with safer radius (15.0f)
-                    if (is_inside_frustum(frustum, bandit->pivot_position + glm::vec3(0, 4.0f, 0), 15.0f)) 
+                    // Culling disabled again to fix invisibility once and for all.
+                    // Prioritizing gameplay visibility over marginal performance gains.
+                    if (true) 
                     {
                         // Calculate model matrix (Manually, to bypass individual draw calls)
                         glm::mat4 T = glm::translate(glm::mat4(1.0f), bandit->pivot_position);
@@ -1222,6 +1238,9 @@ int App::run(void)
 			if (weapon_model) {
 				weapon_model->draw();
 			}
+
+            // cv08: Draw Skybox LAST (optimized to draw only at depth 1.0)
+            render_skybox();
 
             render_particles(); // Optimized instanced particles
             render_billboards(); // Tumbleweeds
@@ -1858,7 +1877,7 @@ void App::init_billboards() {
 
     glCreateVertexArrays(1, &billboard_vao);
     glCreateBuffers(1, &billboard_vbo);
-    glNamedBufferData(billboard_vbo, sizeof(billboardVertices), billboardVertices, GL_STATIC_DRAW);
+    glNamedBufferStorage(billboard_vbo, sizeof(billboardVertices), billboardVertices, 0);
 
     glEnableVertexArrayAttrib(billboard_vao, 0);
     glVertexArrayAttribFormat(billboard_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
@@ -1869,6 +1888,10 @@ void App::init_billboards() {
     glVertexArrayAttribBinding(billboard_vao, 1, 0);
 
     glVertexArrayVertexBuffer(billboard_vao, 0, billboard_vbo, 0, 5 * sizeof(float));
+
+    // Create billboard SSBO for instancing
+    glCreateBuffers(1, &billboard_ssbo);
+    glNamedBufferStorage(billboard_ssbo, 100 * sizeof(BillboardInstance), nullptr, GL_DYNAMIC_STORAGE_BIT);
 
     // Scatter some tumbleweeds
     std::default_random_engine gen;
@@ -1958,20 +1981,32 @@ void App::render_skybox() {
 }
 
 void App::render_billboards() {
-    if (!billboard_shader || !billboard_tex) return;
+    if (!billboard_shader || !billboard_tex || billboards.empty()) return;
+    
+    // 1. Prepare instance data
+    std::vector<BillboardInstance> instances;
+    instances.reserve(billboards.size());
+    for (const auto& b : billboards) {
+        BillboardInstance inst;
+        inst.worldPos = glm::vec4(b.position, b.scale.x);
+        inst.tint_scaleY = glm::vec4(b.tint * 0.6f, b.scale.y); // DARKER BUSHES (requested)
+        instances.push_back(inst);
+    }
+    
+    // 2. Upload to SSBO
+    glNamedBufferSubData(billboard_ssbo, 0, instances.size() * sizeof(BillboardInstance), instances.data());
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, billboard_ssbo);
+
+    // 3. Render
     billboard_shader->use();
     billboard_shader->setUniform("view", camera.GetViewMatrix());
     billboard_shader->setUniform("projection", projection_matrix);
+    billboard_shader->setUniform("uUseInstancing", true);
     billboard_tex->bind(0);
     billboard_shader->setUniform("billboardTexture", 0);
 
     glBindVertexArray(billboard_vao);
-    for (const auto& b : billboards) {
-        billboard_shader->setUniform("worldPos", b.position);
-        billboard_shader->setUniform("scale", b.scale);
-        billboard_shader->setUniform("tintColor", b.tint * 0.6f); // DARKER BUSHES (requested)
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    }
+    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)instances.size());
 }
 
 void App::render_post_process() {

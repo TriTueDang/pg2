@@ -121,12 +121,19 @@ private:
     struct Billboard {
         glm::vec3 position;
         glm::vec2 scale;
-        glm::vec3 tint = glm::vec3(1.0f);
+        glm::vec3 tint;
     };
+
+    struct BillboardInstance {
+        glm::vec4 worldPos; // xyz=pos, w=scaleX
+        glm::vec4 tint_scaleY; // rgb=tint, a=scaleY
+    };
+
     std::vector<Billboard> billboards;
     std::shared_ptr<Texture> billboard_tex;
     GLuint billboard_vao = 0;
     GLuint billboard_vbo = 0;
+    GLuint billboard_ssbo = 0;
 
     // Lighting
     DirectionalLight dir_light;
@@ -264,6 +271,7 @@ private:
     PG2::CatmullRomSpline intro_spline;
     float intro_time = 0.0f;
     float intro_duration = 12.0f; // seconds
+    bool intro_done = false; // Persistent flag to prevent replay on window resize
     
     struct {
         glm::vec3 start_pos, end_pos;
@@ -275,6 +283,12 @@ private:
     bool is_first_wave = true;
     float invulnerability_timer = 0.0f;
     float wave_info_timer = 0.0f;
+
+    // Performance Optimization Cache
+    std::vector<std::string> point_light_pos_names;
+    std::vector<std::string> point_light_amb_names;
+    std::vector<std::string> point_light_diff_names;
+    std::vector<std::string> point_light_spec_names;
 
     // Spline visual (keep VBO/VAO if needed for debug, otherwise remove)
     GLuint path_vao = 0, path_vbo = 0;

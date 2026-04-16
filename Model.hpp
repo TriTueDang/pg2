@@ -107,7 +107,7 @@ public:
         return world_triangles;
     }
 
-    void draw() {
+    void draw(bool use_shader = true, std::shared_ptr<ShaderProgram> external_shader = nullptr) {
         // Calculate base model matrix for the whole model
         glm::mat4 T = glm::translate(glm::mat4(1.0f), pivot_position);
         glm::mat4 R = glm::yawPitchRoll(glm::radians(eulerAngles.y), glm::radians(eulerAngles.x), glm::radians(eulerAngles.z));
@@ -116,7 +116,11 @@ public:
 
         // call draw() on mesh (all meshes)
         for (auto const& mesh_pkg : meshes) {
-            mesh_pkg.shader->use(); // select proper shader
+            auto active_shader = use_shader ? mesh_pkg.shader : external_shader;
+
+            if (use_shader && active_shader) {
+                active_shader->use(); // select proper shader
+            }
             
             // Calculate mesh-local transformation
             glm::mat4 mT = glm::translate(glm::mat4(1.0f), mesh_pkg.origin);
@@ -124,9 +128,11 @@ public:
             glm::mat4 mS = glm::scale(glm::mat4(1.0f), mesh_pkg.scale);
             glm::mat4 mesh_local_matrix = mT * mR * mS;
 
-            // Set final model matrix uniform
-            mesh_pkg.shader->setUniform("uM_m", model_matrix * mesh_local_matrix);
-            mesh_pkg.shader->setUniform("uUseInstancing", false); // Ensure instancing is off for standard draw
+            if (active_shader) {
+                // Set final model matrix uniform
+                active_shader->setUniform("uM_m", model_matrix * mesh_local_matrix);
+                active_shader->setUniform("uUseInstancing", false);
+            }
 
             mesh_pkg.mesh->draw();   // draw mesh
         }

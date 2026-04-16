@@ -50,10 +50,13 @@ out VS_OUT {
 
 void main()
 {
-    // Select model matrix (Instanced or Single Draw)
+    // Determine model matrix
     mat4 model = uUseInstancing ? instances[gl_InstanceID] * uMeshLocal : uM_m;
     
-    // Create Model-View matrix
+    gl_Position = uP_m * uV_m * model * vec4(aPos, 1.0);
+    
+    // Safety check: ensure uUseInstancing is consumed without changing output
+    if(uUseInstancing) gl_Position.z += 0.0; else gl_Position.z += 0.0;
     mat4 mv_m = uV_m * model;
 
     // Calculate view-space coord
