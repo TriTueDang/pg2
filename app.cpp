@@ -375,7 +375,7 @@ void App::init_assets(void) {
         
         bandits.clear();
         bandit_throw_timers.clear();
-        spawn_bandit_wave(5); // Start with 5 bandits for challenge
+        // spawn_bandit_wave(5); // REQ: delayed spawn (moved to run loop after intro)
     } catch (...) { std::cerr << "Failed to load bandits\n"; }
 
 
@@ -399,6 +399,7 @@ void App::init_assets(void) {
         skybox_shader = ShaderProgram::from_files("skybox.vert", "skybox.frag");
         post_process_shader = ShaderProgram::from_files("post_process.vert", "post_process.frag");
         billboard_shader = ShaderProgram::from_files("billboard.vert", "billboard.frag");
+        particle_shader = ShaderProgram::from_files("particle.vert", "particle.frag");
         billboard_tex = std::make_shared<Texture>("assets/tumbleweed.png", Texture::Interpolation::linear, true);
     } catch (...) { std::cerr << "Failed to load cv07/cv08 shaders or assets\n"; }
 
@@ -423,9 +424,9 @@ void App::init_assets(void) {
     // REQ: lighting model (1x ambient, 1x directional, 2x point, 1x reflector) - viz shader.frag
     // Initialize directional light (sun)
     dir_light.direction = glm::normalize(glm::vec3(1.0f, -1.0f, -0.5f));
-    dir_light.ambient = glm::vec3(0.12f, 0.12f, 0.15f); // Reduced global ambient
-    dir_light.diffuse = glm::vec3(0.6f, 0.5f, 0.4f);  // Slightly warmer, less harsh
-    dir_light.specular = glm::vec3(0.3f, 0.3f, 0.3f);
+    dir_light.ambient = glm::vec3(0.15f, 0.15f, 0.18f); // Better shadow visibility
+    dir_light.diffuse = glm::vec3(1.4f, 1.25f, 0.9f);  // Intense, warm golden sun
+    dir_light.specular = glm::vec3(0.5f, 0.5f, 0.5f);
 
     // REQ: min. 2x point light
     PointLight light1;
@@ -626,6 +627,12 @@ int App::run(void)
 				if (cam_transition.progress >= 1.0f) {
 					cam_state = AppCameraState::GAMEPLAY;
 					invulnerability_timer = 10.0f; // 10 seconds of invulnerability after intro
+                    
+                    // REQ: delayed spawn - start first wave after intro
+                    if (is_first_wave) {
+                        spawn_bandit_wave(5);
+                        is_first_wave = false;
+                    }
 				} else {
 					// Smooth interpolation
 					float t = cam_transition.progress;
@@ -647,6 +654,18 @@ int App::run(void)
 			if (wave_info_timer > 0.0f) {
 				wave_info_timer -= delta_t;
 			}
+
+            // --- Particle System Update ---
+            for (auto it = active_particles.begin(); it != active_particles.end();) {
+                it->life -= delta_t;
+                if (it->life <= 0.0f) {
+                    it = active_particles.erase(it);
+                } else {
+                    it->position += it->velocity * delta_t;
+                    it->velocity.y -= 9.8f * delta_t; // Gravity for particles
+                    ++it;
+                }
+            }
 
 			//########## react to user  ##########
 			if (cam_state == AppCameraState::GAMEPLAY) {

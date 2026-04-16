@@ -207,6 +207,17 @@ private:
         bool isFromPlayer = true;
     };
 
+    struct Particle {
+        glm::vec3 position;
+        glm::vec3 velocity;
+        glm::vec4 color;
+        float life; // 1.0 to 0.0
+        float size;
+    };
+    std::vector<Particle> active_particles;
+    std::shared_ptr<ShaderProgram> particle_shader;
+    void spawn_particles(glm::vec3 pos, glm::vec3 color, int count, float size = 0.5f);
+
     struct WhiskeyPickup {
         glm::vec3 position;
         float rotation = 0.0f;
@@ -258,6 +269,7 @@ private:
     void render_billboards();
     GLuint post_process_vao = 0;
     void render_post_process();
+    void render_particles();
     GLuint load_cubemap(std::vector<std::string> faces);
 
     // initialization helpers

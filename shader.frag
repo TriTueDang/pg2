@@ -90,8 +90,9 @@ void main()
     vec3 N = normalize(fs_in.N);
     vec3 V = normalize(fs_in.V);
 
-    // Sample texture
+    // Sample texture and convert to linear space (assuming most textures are sRGB)
     vec4 texColor = texture(uTexture, fs_in.texCoord);
+    texColor.rgb = pow(texColor.rgb, vec3(2.2));
 
     // Directional light contribution
     vec3 dir_L = normalize(fs_in.dir_L);
