@@ -32,6 +32,7 @@ uniform vec3 spot_light_direction;
 uniform float spot_light_cutoff;
 uniform float spot_light_outer_cutoff;
 
+// REQ: lighting model, all basic lights types (ambient, directional, point, reflector)
 // Input from vertex shader
 in VS_OUT {
     vec3 fragPos;
@@ -44,24 +45,34 @@ in VS_OUT {
 } fs_in;
 
 vec3 calculatePointLight(int i, vec3 N, vec3 V) {
+    float dist = length(fs_in.point_L[i]);
     vec3 L = normalize(fs_in.point_L[i]);
     vec3 R = reflect(-L, N);
+    
+    // Attenuation
+    float attenuation = 1.0 / (1.0 + 0.045 * dist + 0.0075 * dist * dist);
     
     vec3 ambient = point_light_ambient[i] * ambient_material;
     vec3 diffuse = max(dot(N, L), 0.0) * point_light_diffuse[i] * diffuse_material;
     vec3 specular = pow(max(dot(R, V), 0.0), specular_shininess) * 
                     point_light_specular[i] * specular_material;
     
-    return (ambient + diffuse + specular);
+    return (ambient + diffuse + specular) * attenuation;
 }
 
 vec3 calculateSpotLight(vec3 N, vec3 V) {
+    float dist = length(fs_in.point_L[MAX_POINT_LIGHTS - 1]); // Assuming spot_L logic but we have fs_in.spot_L
+    // Re-check: fs_in.spot_L is provided.
+    float distance = length(fs_in.spot_L);
     vec3 L = normalize(fs_in.spot_L);
     vec3 spotDir = normalize(spot_light_direction);
     
     float theta = dot(L, -spotDir);
     float epsilon = cos(radians(spot_light_cutoff)) - cos(radians(spot_light_outer_cutoff));
     float intensity = clamp((theta - cos(radians(spot_light_outer_cutoff))) / epsilon, 0.0, 1.0);
+    
+    // Attenuation for spotlight
+    float attenuation = 1.0 / (1.0 + 0.07 * distance + 0.017 * distance * distance);
     
     vec3 R = reflect(-L, N);
     
@@ -70,7 +81,7 @@ vec3 calculateSpotLight(vec3 N, vec3 V) {
     vec3 specular = pow(max(dot(R, V), 0.0), specular_shininess) * 
                     spot_light_specular * specular_material * intensity;
     
-    return (ambient + diffuse + specular);
+    return (ambient + diffuse + specular) * attenuation;
 }
 
 void main()
@@ -79,8 +90,9 @@ void main()
     vec3 N = normalize(fs_in.N);
     vec3 V = normalize(fs_in.V);
 
-    // Sample texture
+    // Sample texture and convert to linear space (assuming most textures are sRGB)
     vec4 texColor = texture(uTexture, fs_in.texCoord);
+    texColor.rgb = pow(texColor.rgb, vec3(2.2));
 
     // Directional light contribution
     vec3 dir_L = normalize(fs_in.dir_L);
@@ -102,6 +114,7 @@ void main()
 
     // Combine all lighting
     vec3 lighting = dirLight + pointLight + spotLight;
+    lighting += vec3(0.05); // Minimum brightness boost for visibility
     
     // Apply to texture
     FragColor = vec4(lighting * texColor.rgb, texColor.a);

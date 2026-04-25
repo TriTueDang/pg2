@@ -90,7 +90,18 @@ GLuint Texture::get_name() const {
 }
 
 void Texture::bind(GLuint unit) const {
-    glBindTextureUnit(unit, get_name());
+    static GLuint currently_bound[32] = {0}; // Cache for up to 32 texture units
+    GLuint target_name = get_name();
+    
+    if (unit < 32 && currently_bound[unit] == target_name) {
+        return; // Skip redundant DSA calls (Optimized for PRIME Offloading)
+    }
+    
+    glBindTextureUnit(unit, target_name);
+    
+    if (unit < 32) {
+        currently_bound[unit] = target_name;
+    }
 }
 
 void Texture::set_interpolation(Interpolation interpolation) {

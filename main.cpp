@@ -1,5 +1,12 @@
-// icp.cpp
-// author: JJ
+// --- High Performance GPU selection (Windows) -------------------------------
+#ifdef _WIN32
+extern "C" {
+	__declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
+	__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+#endif
+
+// main implementation
 
 #include <iostream>
 #include <chrono>
@@ -20,8 +27,7 @@
 // WGLEW = Windows GL Extension Wrangler (change for different platform)
 // platform specific functions (in this case Windows)
 
-// GLFW toolkit
-// Uses GL calls to open GL context, i.e. GLEW __MUST__ be first.
+// REQ: 3D GL Core profile + shaders version 4.6 (viz init_glfw v app.cpp)
 #include <GLFW/glfw3.h>
 
 // OpenGL math (and other additional GL libraries, at the end)

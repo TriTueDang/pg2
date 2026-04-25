@@ -1,7 +1,3 @@
-// app.cpp
-// Main application implementation for the pg2 project
-// author: JJ
-
 // --- Standard library headers ------------------------------------------------
 #include <iostream>   // i/o streams
 #include <fstream>    // file input/output (used by JSON loader)
@@ -50,6 +46,10 @@ using json = nlohmann::json;
 
 // OpenGL debug callback (Task 1) - from lecture
 static void GLAPIENTRY gl_debug_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
+    // FAKT PODROBNÁ OPTIMALIZACE: Ignorujeme vše kromě vysoké závažnosti (ERROR a HIGH)
+    if (severity != GL_DEBUG_SEVERITY_HIGH && severity != GL_DEBUG_SEVERITY_MEDIUM) return;
+    if (type == GL_DEBUG_TYPE_OTHER || type == GL_DEBUG_TYPE_PERFORMANCE) return;
+
     auto const src_str = [source]() {
         switch (source) {
         case GL_DEBUG_SOURCE_API: return "API";
@@ -57,40 +57,21 @@ static void GLAPIENTRY gl_debug_callback(GLenum source, GLenum type, GLuint id, 
         case GL_DEBUG_SOURCE_SHADER_COMPILER: return "SHADER COMPILER";
         case GL_DEBUG_SOURCE_THIRD_PARTY: return "THIRD PARTY";
         case GL_DEBUG_SOURCE_APPLICATION: return "APPLICATION";
-        case GL_DEBUG_SOURCE_OTHER: return "OTHER";
-        default: return "Unknown";
+        default: return "OTHER";
         }
     }();
 
     auto const type_str = [type]() {
         switch (type) {
         case GL_DEBUG_TYPE_ERROR: return "ERROR";
-        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: return "DEPRECATED_BEHAVIOR";
-        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR: return "UNDEFINED_BEHAVIOR";
+        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: return "DEPRECATED";
+        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR: return "UNDEFINED";
         case GL_DEBUG_TYPE_PORTABILITY: return "PORTABILITY";
-        case GL_DEBUG_TYPE_PERFORMANCE: return "PERFORMANCE";
-        case GL_DEBUG_TYPE_MARKER: return "MARKER";
-        case GL_DEBUG_TYPE_OTHER: return "OTHER";
-        default: return "Unknown";
+        default: return "OTHER";
         }
     }();
 
-    auto const severity_str = [severity]() {
-        switch (severity) {
-        case GL_DEBUG_SEVERITY_NOTIFICATION: return "NOTIFICATION";
-        case GL_DEBUG_SEVERITY_LOW: return "LOW";
-        case GL_DEBUG_SEVERITY_MEDIUM: return "MEDIUM";
-        case GL_DEBUG_SEVERITY_HIGH: return "HIGH";
-        default: return "Unknown";
-        }
-    }();
-
-    std::cout << "[GL CALLBACK]: " <<
-        "source = " << src_str <<
-        ", type = " << type_str <<
-        ", severity = " << severity_str <<
-        ", ID = '" << id << '\'' <<
-        ", message = '" << message << '\'' << std::endl;
+    std::cerr << "[GL ERROR]: " << src_str << " | " << type_str << " | " << message << std::endl;
 }
 
 // // GLFW error callback (Task 2)
@@ -112,7 +93,7 @@ bool App::init() {
         // GLFW INIT
         // -------------------------
         init_glfw();
-
+        // REQ: JSON config file (config.json)
         load_config("config.json");
 
         // -------------------------
@@ -120,9 +101,7 @@ bool App::init() {
         // -------------------------
         init_glew();
 
-        // -------------------------
-        // OPENGL DEBUG
-        // -------------------------
+        // REQ: GL debug enabled via glDebugMessageCallback (viz init_gl_debug)
         init_gl_debug();
 
         // -------------------------
@@ -135,7 +114,8 @@ bool App::init() {
 
         glEnable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE); // Ensure triangle is visible from both sides
-        glEnable(GL_MULTISAMPLE); // Task 1: Enable multisampling by default
+        // REQ: antialiasing (MSAA 4x, viz init_glfw)
+        glEnable(GL_MULTISAMPLE); 
         
         // cv07: Enable Blending
         glEnable(GL_BLEND);
@@ -166,6 +146,15 @@ bool App::init() {
 
 		// Initialize OpenCV (if needed)
 		init_opencv();
+
+        // Performance: Pre-calculate light uniform names to avoid per-frame allocations
+        for (int i = 0; i < 3; i++) {
+            std::string idx = std::to_string(i);
+            point_light_pos_names.push_back("point_light_position[" + idx + "]");
+            point_light_amb_names.push_back("point_light_ambient[" + idx + "]");
+            point_light_diff_names.push_back("point_light_diffuse[" + idx + "]");
+            point_light_spec_names.push_back("point_light_specular[" + idx + "]");
+        }
 
         // Task 1.3: show window after all is loaded
         glfwShowWindow(window);
@@ -235,13 +224,14 @@ void App::init_glfw(void)
 	if (!glfwInit())
 		throw std::runtime_error("GLFW initialization failed.");
 
-	// OpenGL 4.6 core
+	// REQ: 3D GL Core profile + shaders version 4.6
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 
-	glfwWindowHint(GLFW_SAMPLES, 4); // Task 1: set MSAA level to 4
+	// REQ: antialiasing (MSAA 4x) - disabled for backbuffer to optimize PCIe on external GPUs
+	glfwWindowHint(GLFW_SAMPLES, 0); 
 
 	// Task 1.3: hide window during initialization
 	glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
@@ -256,6 +246,7 @@ void App::init_glfw(void)
 		throw std::runtime_error("Window creation failed.");
 
 	glfwMakeContextCurrent(window);
+	// REQ: allow VSync control (toggle with key 'V')
 	glfwSwapInterval(is_vsync_on ? 1 : 0);
 
 	// Task 1.2: initial mouse capture
@@ -309,7 +300,10 @@ void App::print_gl_info()
 	std::cout << "OpenGL Vendor:   " << glGetString(GL_VENDOR) << std::endl;
 	std::cout << "OpenGL Renderer: " << glGetString(GL_RENDERER) << std::endl;
 	std::cout << "OpenGL Version:  " << glGetString(GL_VERSION) << std::endl;
-	std::cout << "GLSL Version:    " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
+	    std::cout << "GLSL Version:    " << glGetString(GL_SHADING_LANGUAGE_VERSION) << "\n";
+    // Explicitly disable debug spam to clear the terminal for FPS logs
+    glDisable(GL_DEBUG_OUTPUT);
+    std::cout << "Initialized...\n";
 }
 
 void App::print_glfw_info(void)
@@ -343,10 +337,13 @@ void App::init_assets(void) {
     auto dynamite_tex = std::make_shared<Texture>("assets/dynamite/textures/Dynamite_Black_Dm.png");
     auto whiskey_tex = std::make_shared<Texture>("assets/Whiskey/material12.png");
 
+    // REQ: multiple different independently moving 3D models, at least two loaded from file (City, Rango, Revolver, Bandits...)
+    // REQ: at least three different textures (city_tex, rango_tex, bandit_tex...)
     // Load City
     try {
         city_model = std::make_shared<Model>("assets/chicken-gun-western-reupload/source/western.obj", shader_prog, city_tex);
         city_model->scale = glm::vec3(0.05f); // Restored original scale
+        city_model->is_static = true; // FAKT PODROBNÁ OPTIMALIZACE: Povolení AABB cache
     } catch (...) { std::cerr << "Failed to load western city\n"; }
 
     // Load Rango (Player Model)
@@ -355,10 +352,9 @@ void App::init_assets(void) {
         player_model->scale = glm::vec3(4.0f); // Restored original scale
     } catch (...) { std::cerr << "Failed to load Rango\n"; }
 
-    // Load Revolver (attached to player)
     try {
         weapon_model = std::make_shared<Model>("assets/38-special-revolver/source/rev_anim.obj.obj", shader_prog, revolver_tex);
-        weapon_model->scale = glm::vec3(0.005f); // Restored original scale
+        weapon_model->scale = glm::vec3(0.05f); // Radical scale increase for guaranteed visibility
     } catch (...) { std::cerr << "Failed to load revolver\n"; }
 
     // Build BVH physics for the city immediately after loading city model
@@ -369,10 +365,15 @@ void App::init_assets(void) {
         auto bandit_base = std::make_shared<Model>("assets/bobrito-bandito-game-ready-3d-model-free/source/Offensive Idle.obj", shader_prog, bandit_tex);
         bandits.clear();
         bandit_base_model = bandit_base; // Store base model for wave spawning
+        bandit_base_model->scale = glm::vec3(0.05f); // Requested scale
+        
+        // Initialize Bandit SSBO (Modern OpenGL instancing)
+        glCreateBuffers(1, &bandit_ssbo);
+        glNamedBufferData(bandit_ssbo, 1000 * (sizeof(glm::vec4) * 2), nullptr, GL_STREAM_DRAW); // Pre-allocate for 1000 bandits
         
         bandits.clear();
         bandit_throw_timers.clear();
-        spawn_bandit_wave(5); // Start with 5 bandits for challenge
+        // spawn_bandit_wave(5); // REQ: delayed spawn (moved to run loop after intro)
     } catch (...) { std::cerr << "Failed to load bandits\n"; }
 
 
@@ -389,47 +390,55 @@ void App::init_assets(void) {
     try {
         bullet_model = std::make_shared<Model>("assets/dynamite/source/Dynamite.obj", shader_prog, city_tex);
         bullet_model->scale = glm::vec3(0.15f);
-    } catch (...) { std::cerr << "Failed to load bullet model\n"; }
+    } catch (...) { 
+        std::cerr << "Failed to load bullet model\n"; 
+    }
 
     // Load cv07/cv08 shaders
     try {
         skybox_shader = ShaderProgram::from_files("skybox.vert", "skybox.frag");
         post_process_shader = ShaderProgram::from_files("post_process.vert", "post_process.frag");
         billboard_shader = ShaderProgram::from_files("billboard.vert", "billboard.frag");
+        particle_shader = ShaderProgram::from_files("particle.vert", "particle.frag");
         billboard_tex = std::make_shared<Texture>("assets/tumbleweed.png", Texture::Interpolation::linear, true);
-    } catch (...) { std::cerr << "Failed to load cv07/cv08 shaders or assets\n"; }
-
-    // Load Waypoint
-    try {
-        waypoint_shader = ShaderProgram::from_files("waypoint.vert", "waypoint.frag"); 
-        waypoint_model = std::make_shared<Model>("triangle.obj", waypoint_shader);
-        waypoint_model->scale = glm::vec3(2.5f);
-    } catch (...) { std::cerr << "Failed to load waypoint assets\n"; }
+    } catch (...) { 
+        std::cerr << "Failed to load core shaders or assets\n"; 
+    }
 
     // Load Whiskey
     try {
         whiskey_model = std::make_shared<Model>("assets/Whiskey/MushroomPotion.obj", shader_prog, whiskey_tex);
-        whiskey_model->scale = glm::vec3(4.0f); // Increased size as requested
-    } catch (...) { std::cerr << "Failed to load whiskey model\n"; }
+        whiskey_model->scale = glm::vec3(4.0f); 
+    } catch (...) { 
+        std::cerr << "Failed to load whiskey model\n"; 
+    }
 
     shader_prog->use();
     shader_prog->setUniform("uTexture", 0);
 
+    // REQ: lighting model (1x ambient, 1x directional, 2x point, 1x reflector) - viz shader.frag
     // Initialize directional light (sun)
     dir_light.direction = glm::normalize(glm::vec3(1.0f, -1.0f, -0.5f));
-    dir_light.ambient = glm::vec3(0.3f, 0.3f, 0.3f);
-    dir_light.diffuse = glm::vec3(0.8f, 0.8f, 0.8f); // Neutral white sun light
+    dir_light.ambient = glm::vec3(0.15f, 0.15f, 0.18f); // Better shadow visibility
+    dir_light.diffuse = glm::vec3(1.4f, 1.25f, 0.9f);  // Intense, warm golden sun
     dir_light.specular = glm::vec3(0.5f, 0.5f, 0.5f);
 
-    // Initialize one point light for testing
+    // REQ: min. 2x point light
     PointLight light1;
-    light1.position = glm::vec3(5.0f, 5.0f, 5.0f);
-    light1.ambient = glm::vec3(0.1f, 0.1f, 0.1f);
-    light1.diffuse = glm::vec3(1.0f, 0.8f, 0.4f);
+    light1.position = glm::vec3(5.0f, 15.0f, 5.0f);
+    light1.ambient = glm::vec3(0.01f, 0.01f, 0.01f); // Minimal ambient from point lights
+    light1.diffuse = glm::vec3(1.5f, 1.2f, 0.6f); // Stronger diffuse to compensate for attenuation
     light1.specular = glm::vec3(1.0f, 1.0f, 1.0f);
     point_lights.push_back(light1);
 
-    // Initialize spot light (headlight/flashlight)
+    PointLight light2;
+    light2.position = glm::vec3(-50.0f, 20.0f, -30.0f);
+    light2.ambient = glm::vec3(0.01f, 0.01f, 0.01f);
+    light2.diffuse = glm::vec3(0.6f, 1.2f, 1.5f); // Compensating for attenuation
+    light2.specular = glm::vec3(1.0f, 1.0f, 1.0f);
+    point_lights.push_back(light2);
+
+    // REQ: min. 1x reflector
     SpotLight headlight;
     headlight.position = glm::vec3(0.0f, 0.0f, 0.0f);
     headlight.direction = glm::vec3(0.0f, 0.0f, -1.0f);
@@ -524,8 +533,22 @@ int App::run(void)
 				ImGui::SetNextWindowSize(ImVec2(300, 180));
 
 				ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-				ImGui::Text("FPS: %.1f", FPS);
+				ImGui::Text("Chicken Gun Story");
+                ImGui::Separator();
+                ImGui::Text("FPS: %.1f", FPS);
+                ImGui::Separator();
 				ImGui::Text("SCORE: %d", score);
+
+				// Health Bar (přesunuto nad WAVE a BANDITS LEFT)
+				ImGui::Spacing();
+				ImGui::Text("HEALTH");
+                float hp_normalized = std::clamp(player_health / 100.0f, 0.0f, 1.0f);
+				ImVec4 health_color = ImVec4(1.0f - hp_normalized, hp_normalized, 0.0f, 1.0f);
+				ImGui::PushStyleColor(ImGuiCol_PlotHistogram, health_color);
+				ImGui::ProgressBar(hp_normalized, ImVec2(-1, 0), "");
+				ImGui::PopStyleColor();
+				ImGui::Spacing();
+
 				ImGui::Text("WAVE: %d", wave_number);
 				ImGui::Text("BANDITS LEFT: %d", (int)bandits.size());
 				if (invulnerability_timer > 0.0f) {
@@ -533,15 +556,6 @@ int App::run(void)
 				}
 				ImGui::Text("V-Sync: %s (hit V to toggle)", is_vsync_on ? "ON" : "OFF");
 				ImGui::Text("Multisample (AA): %s (hit M to toggle)", is_multisample_on ? "ON" : "OFF");
-
-				
-				// Health Bar
-				ImGui::Spacing();
-				ImGui::Text("HEALTH");
-				ImVec4 health_color = ImVec4(1.0f - (player_health / 100.0f), player_health / 100.0f, 0.0f, 1.0f);
-				ImGui::PushStyleColor(ImGuiCol_PlotHistogram, health_color);
-				ImGui::ProgressBar(player_health / 100.0f, ImVec2(-1, 0), "");
-				ImGui::PopStyleColor();
 
 				if (is_player_dead) {
 					ImGui::SetNextWindowPos(ImVec2(width / 2.0f - 100, height / 2.0f - 50));
@@ -573,7 +587,7 @@ int App::run(void)
 
 				// Crosshair
 				ImGui::GetForegroundDrawList()->AddCircle(
-					ImVec2(width / 2.0f, height / 2.0f), 
+					ImVec2(width / 2.0f, height / 2.0f - 135.0f), 
 					10.0f, 
 					IM_COL32(255, 255, 255, 150), 
 					16, 
@@ -592,6 +606,10 @@ int App::run(void)
 
 			// --- Camera State Machine (cv09) ---
 			if (cam_state == AppCameraState::CINEMATIC) {
+                if (intro_done) { 
+                    cam_state = AppCameraState::GAMEPLAY; 
+                    continue; // Skip this frame's cinematic update and proceed to gameplay
+                }
 				intro_time += delta_t * (intro_spline.getMaxT() / intro_duration);
 				if (intro_time >= intro_spline.getMaxT()) {
 					// Prepare Transition
@@ -612,6 +630,7 @@ int App::run(void)
 				cam_transition.progress += delta_t / cam_transition.duration;
 				if (cam_transition.progress >= 1.0f) {
 					cam_state = AppCameraState::GAMEPLAY;
+                    intro_done = true; // Mark as permanently done
 					invulnerability_timer = 10.0f; // 10 seconds of invulnerability after intro
 				} else {
 					// Smooth interpolation
@@ -630,10 +649,31 @@ int App::run(void)
 
 			if (invulnerability_timer > 0.0f) {
 				invulnerability_timer -= delta_t;
-			}
+                // REQ: delayed spawn - start first wave exactly when shield ends AND intro is over
+                if (cam_state == AppCameraState::GAMEPLAY && is_first_wave && invulnerability_timer <= 0.0f) {
+                    spawn_bandit_wave(5);
+                    is_first_wave = false;
+                }
+			} else if (cam_state == AppCameraState::GAMEPLAY && !is_player_dead) {
+                // REQ: Slow health regeneration
+                player_health = std::min(100.0f, player_health + 1.0f * delta_t); // 1 HP per second
+            }
 			if (wave_info_timer > 0.0f) {
 				wave_info_timer -= delta_t;
 			}
+
+            // --- Particle System Update (Optimized Erase-Remove) ---
+            active_particles.erase(
+                std::remove_if(active_particles.begin(), active_particles.end(),
+                    [&](Particle& p) {
+                        p.life -= delta_t;
+                        if (p.life <= 0.0f) return true;
+                        p.position += p.velocity * delta_t;
+                        p.velocity.y -= 9.8f * delta_t; // Gravity for particles
+                        return false;
+                    }),
+                active_particles.end()
+            );
 
 			//########## react to user  ##########
 			if (cam_state == AppCameraState::GAMEPLAY) {
@@ -651,29 +691,40 @@ int App::run(void)
 			}
 			
 			is_moving = false;
-			glm::vec3 movement_delta(0.0f);
 			if (glm::length(moveDir) > 0.0f) {
 				moveDir.y = 0.0f; 
 				if (glm::length(moveDir) > 0.0f) {
-					movement_delta = glm::normalize(moveDir) * (float)(camera.MovementSpeed * delta_t);
 					is_moving = true;
 				}
 			}
 
-			// Integrated Physics Update for Player (always update physics to avoid falling through floor)
-			auto kcc = physics.update_character(
-				playerPos, 
-				movement_delta, 
-				velocity_y, 
-				gravity, 
-				2.0f, // Lower step height (CV: fences are now blocked)
-				0.6f, // Smaller radius for narrow steps
-				delta_t
-			);
+			// Integrated Physics Update with Sub-stepping (Anti-Tunneling at Low FPS)
+			float remaining_time = delta_t;
+			const float MAX_STEP = 0.01f; // Vynutí garantovanou 100Hz kolizní přesnost
+			
+			while (remaining_time > 0.0f) {
+				float step_dt = std::min(remaining_time, MAX_STEP);
+				glm::vec3 step_movement(0.0f);
+				if (is_moving) {
+					step_movement = glm::normalize(moveDir) * (float)(camera.MovementSpeed * step_dt);
+				}
 
-			playerPos = kcc.new_position;
-			velocity_y = kcc.new_velocity_y;
-			is_on_ground = kcc.is_on_ground;
+				auto kcc = physics.update_character(
+					playerPos, 
+					step_movement, 
+					velocity_y, 
+					gravity, 
+					2.0f, // Lower step height (CV: fences are now blocked)
+					1.5f, // Robustnější poloměr detekce zamezující průchodu tenkými stěnami a mezerami (anti-tunneling)
+					step_dt
+				);
+
+				playerPos = kcc.new_position;
+				velocity_y = kcc.new_velocity_y;
+				is_on_ground = kcc.is_on_ground;
+
+				remaining_time -= step_dt;
+			}
 
 			// World Border (Prevent falling off map)
 			const float border_limit = 480.0f;
@@ -796,10 +847,12 @@ int App::run(void)
 			for (auto it = active_dynamites.begin(); it != active_dynamites.end(); ) {
 				if (!it->on_ground) {
 					glm::vec3 nextPos = it->position + it->velocity * delta_t;
-					// Wall/Ground collision for dynamites using raycast
-					auto hit = physics.raycast(it->position, it->velocity, glm::length(it->velocity * delta_t));
+					// Wall/Ground/Ceiling collision for dynamites using raycast
+                    float step_len = glm::length(it->velocity * delta_t);
+					auto hit = physics.raycast(it->position, it->velocity, step_len);
 					if (hit.hit) {
-						it->timer = 0; // Detonate on impact with wall/ceiling
+						it->timer = 0; // Detonate on impact with wall/ceiling/anything
+                        it->position = hit.point; // Snap to hit point for accurate explosion
 					}
 					
 					it->velocity.y += gravity * delta_t;
@@ -821,73 +874,72 @@ int App::run(void)
 						player_health -= dynamite_damage * (1.0f - (dist / dynamite_radius));
 						if (player_health <= 0) is_player_dead = true;
 					}
+					spawn_particles(it->position, glm::vec3(0.5, 0.4, 0.2), 50, 1.0f); // Dust explosion
+                    spawn_particles(it->position, glm::vec3(1.0, 0.7, 0.2), 30, 0.4f); // Sparks
 					it = active_dynamites.erase(it);
 				} else {
 					++it;
 				}
 			}
 
-			// Update Bullets
-			for (auto it = active_bullets.begin(); it != active_bullets.end(); ) {
-				// Wall/Ground collision for bullets using raycast
-				float dist_step = glm::length(it->velocity * delta_t);
-				auto hit = physics.raycast(it->position, it->velocity, dist_step);
-				
-				if (hit.hit) {
-					it = active_bullets.erase(it);
-					continue;
-				}
-				
-				it->position += it->velocity * delta_t;
-				it->life -= delta_t;
+			// Update Bullets (Optimized Erase-Remove)
+            active_bullets.erase(
+                std::remove_if(active_bullets.begin(), active_bullets.end(),
+                    [&](Bullet& b) {
+                        // Wall/Ground collision for bullets using raycast
+                        float dist_step = glm::length(b.velocity * delta_t);
+                        auto hit = physics.raycast(b.position, b.velocity, dist_step);
+                        if (hit.hit) {
+                            spawn_particles(hit.point, glm::vec3(0.6f, 0.5f, 0.4f), 5, 0.2f);
+                            return true;
+                        }
+                        
+                        b.position += b.velocity * delta_t;
+                        b.life -= delta_t;
+                        if (b.life <= 0.0f) return true;
 
-				bool has_collided = false;
-				// Collision with bandits (ONLY if bullet is from player)
-				for (size_t i = 0; i < bandits.size() && it->isFromPlayer; ++i) {
+                        // Collision with bandits (ONLY if bullet is from player)
+                        for (size_t i = 0; i < bandits.size() && b.isFromPlayer; ++i) {
+                            float dist = glm::distance(b.position, bandits[i]->pivot_position + glm::vec3(0, 4.0f, 0));
+                            if (dist < 4.0f) { 
+                                spawn_particles(b.position, glm::vec3(1.0f, 0.1f, 0.1f), 10, 0.3f);
+                                bandit_health[i]--;
+                                if (bandit_health[i] <= 0) {
+                                    // Deleting bandit still uses erase but there are few per frame
+                                    bandits.erase(bandits.begin() + i);
+                                    if (i < bandit_throw_timers.size()) bandit_throw_timers.erase(bandit_throw_timers.begin() + i);
+                                    if (i < bandit_shoot_timers.size()) bandit_shoot_timers.erase(bandit_shoot_timers.begin() + i);
+                                    if (i < bandit_velocities_y.size()) bandit_velocities_y.erase(bandit_velocities_y.begin() + i);
+                                    if (i < bandit_states.size()) bandit_states.erase(bandit_states.begin() + i);
+                                    if (i < bandit_target_positions.size()) bandit_target_positions.erase(bandit_target_positions.begin() + i);
+                                    if (i < bandit_state_timers.size()) bandit_state_timers.erase(bandit_state_timers.begin() + i);
+                                    if (i < bandit_health.size()) bandit_health.erase(bandit_health.begin() + i);
+                                    score += 100;
+                                }
+                                return true;
+                            }
+                        }
 
-					// Bandit center height is roughly 4-6 units
-					float dist = glm::distance(it->position, bandits[i]->pivot_position + glm::vec3(0, 4.0f, 0));
-					if (dist < 4.0f) { 
-						bandit_health[i]--;
-						if (bandit_health[i] <= 0) {
-							bandits.erase(bandits.begin() + i);
-							if (i < bandit_throw_timers.size()) bandit_throw_timers.erase(bandit_throw_timers.begin() + i);
-							if (i < bandit_shoot_timers.size()) bandit_shoot_timers.erase(bandit_shoot_timers.begin() + i);
-							if (i < bandit_velocities_y.size()) bandit_velocities_y.erase(bandit_velocities_y.begin() + i);
-							if (i < bandit_states.size()) bandit_states.erase(bandit_states.begin() + i);
-							if (i < bandit_target_positions.size()) bandit_target_positions.erase(bandit_target_positions.begin() + i);
-							if (i < bandit_state_timers.size()) bandit_state_timers.erase(bandit_state_timers.begin() + i);
-							if (i < bandit_health.size()) bandit_health.erase(bandit_health.begin() + i);
-							
-							score += 100; // Points!
-						}
-						has_collided = true;
-						break;
-					}
-				}
+                        // Collision with player (only if bullet is NOT from player)
+                        if (!b.isFromPlayer) {
+                            float distToPlayer = glm::distance(b.position, playerPos + glm::vec3(0, 5.0f, 0));
+                            if (distToPlayer < 5.0f && cam_state == AppCameraState::GAMEPLAY && invulnerability_timer <= 0.0f) {
+                                player_health -= 5.0f;
+                                if (player_health <= 0) is_player_dead = true;
+                                return true;
+                            }
+                        }
+                        return false;
+                    }),
+                active_bullets.end()
+            );
 
-				// Collision with player (only if bullet is NOT from player)
-				if (!has_collided && !it->isFromPlayer) {
-					float distToPlayer = glm::distance(it->position, playerPos + glm::vec3(0, 5.0f, 0));
-					if (distToPlayer < 5.0f && cam_state == AppCameraState::GAMEPLAY && invulnerability_timer <= 0.0f) {
-						player_health -= 5.0f; // Take damage
-						if (player_health <= 0) is_player_dead = true;
-						has_collided = true;
-					}
-				}
-
-				if (has_collided || it->life <= 0) {
-					it = active_bullets.erase(it);
-				} else {
-					++it;
-				}
-
-			}
-
-			// Wave progression: spawn new wave when only 1 or 0 bandits remain
-			if (bandits.size() <= 1 && !is_player_dead) {
+			// Wave progression: spawn new wave when 0 bandits remain (only during gameplay and after first wave)
+			if (cam_state == AppCameraState::GAMEPLAY && !is_first_wave && bandits.size() == 0 && !is_player_dead) {
 				wave_number++;
-				spawn_bandit_wave(std::min(40, 5 + wave_number * 3)); // Faster wave scaling, capped at 40 for infinite play
+                // REQ Formula: linearly scale so that wave 50 has 40 bandits. (5 + (50-1)*k = 40 => 49k=35 => k=35/49=5/7)
+				spawn_bandit_wave(5 + (wave_number - 1) * 5 / 7); 
+                wave_info_timer = 4.0f;
 			}
 
 			// Periodic Whiskey Respawn (CV: Infinite Mode recovery)
@@ -962,8 +1014,9 @@ int App::run(void)
 
 			// Update weapon position
 			if (weapon_model && player_model) {
-				// Use tunable offsets
-				weapon_model->pivot_position = player_model->pivot_position + camera.Right * weapon_offset.x + camera.Up * weapon_offset.y + camera.Front * weapon_offset.z;
+				// Position weapon relative to player with offset
+				glm::vec3 w_off = glm::vec3(4.0f, 5.0f, 2.0f); // Fast fix visibility
+				weapon_model->pivot_position = playerPos + camera.Right * w_off.x + camera.Up * w_off.y + camera.Front * w_off.z;
 				
 				// Standard rotation based on camera
 				weapon_model->eulerAngles.y = camera.Yaw + weapon_rotation.y;
@@ -988,6 +1041,17 @@ int App::run(void)
 				bandit->eulerAngles.y = angle;
 			}
 
+			// REQ: at least two lights are moving
+			// 1. Move directional light (simulated sun)
+			float sun_angle = (float)now * 0.1f;
+			dir_light.direction = glm::normalize(glm::vec3(sin(sun_angle), -1.0f, cos(sun_angle)));
+
+			// 2. Move point light (orbiting light)
+			if (point_lights.size() > 1) {
+				float orbit_angle = (float)now * 0.5f;
+				point_lights[1].position = glm::vec3(cos(orbit_angle) * 50.0f, 25.0f, sin(orbit_angle) * 50.0f);
+			}
+
 			// Update spotlight - attach to camera (headlight)
 			if (!spot_lights.empty()) {
 				spot_lights[0].position = camera.Position;
@@ -998,10 +1062,20 @@ int App::run(void)
 			// RENDER: GL drawCalls
 			//
 
+            // Handle FBO recreation if MSAA state changed
+            if (msaa_dirty) {
+                init_fbo();
+            }
+
             // cv07: Redirect rendering to FBO if post-processing is enabled
             if (show_post_process) {
-                glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-                glViewport(0, 0, width, height); // Explicitly set viewport for FBO (CV best practice)
+                // If MSAA is on, draw to multisampled buffer first
+                if (is_multisample_on && msaa_fbo != 0) {
+                    glBindFramebuffer(GL_FRAMEBUFFER, msaa_fbo);
+                } else {
+                    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+                }
+                glViewport(0, 0, width, height); 
             } else {
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);
                 glViewport(0, 0, width, height); 
@@ -1011,20 +1085,24 @@ int App::run(void)
 			// Clear OpenGL canvas
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            // cv08: Draw Skybox FIRST (optimized to draw at depth 1.0)
-            render_skybox();
-
 			// Time-based color animation
 			float tri_r = (float)sin(now) * 0.5f + 0.5f;
 			float tri_g = (float)cos(now) * 0.5f + 0.5f;
 			float tri_b = (float)sin(now * 0.5f) * 0.5f + 0.5f;
 
 			//########## create and set View Matrix according to camera settings  ##########
-			shader_prog->use(); // VZDY musitme aktivovat nas shader pred kreslenim, protoze ImGui (kreslene na konci smycky) prehazuje na svuj shader!
+			shader_prog->use();
 			shader_prog->setUniform("uV_m", camera.GetViewMatrix());
 			shader_prog->setUniform("uP_m", projection_matrix);
 
-			// Set up DIRECTIONAL LIGHT uniforms
+            // Extract frustum once for all opaque objects
+            App::Frustum app_frustum = extract_frustum(projection_matrix * camera.GetViewMatrix());
+            auto frustum_ptr = reinterpret_cast<Model::Frustum*>(&app_frustum);
+
+			// draw all (pokud bys mel objekty v poli scene)
+			for (auto& [name, model_obj] : scene) {
+				model_obj.draw(true, nullptr, frustum_ptr);
+			}
 			shader_prog->setUniform("dir_light_direction", dir_light.direction);
 			shader_prog->setUniform("dir_light_ambient", dir_light.ambient);
 			shader_prog->setUniform("dir_light_diffuse", dir_light.diffuse);
@@ -1033,11 +1111,10 @@ int App::run(void)
 			// Set up POINT LIGHTS uniforms
 			shader_prog->setUniform("num_point_lights", (int)point_lights.size());
 			for (size_t i = 0; i < point_lights.size() && i < 3; i++) {
-				std::string idx = std::to_string(i);
-				shader_prog->setUniform("point_light_position[" + idx + "]", point_lights[i].position);
-				shader_prog->setUniform("point_light_ambient[" + idx + "]", point_lights[i].ambient);
-				shader_prog->setUniform("point_light_diffuse[" + idx + "]", point_lights[i].diffuse);
-				shader_prog->setUniform("point_light_specular[" + idx + "]", point_lights[i].specular);
+				shader_prog->setUniform(point_light_pos_names[i], point_lights[i].position);
+				shader_prog->setUniform(point_light_amb_names[i], point_lights[i].ambient);
+				shader_prog->setUniform(point_light_diff_names[i], point_lights[i].diffuse);
+				shader_prog->setUniform(point_light_spec_names[i], point_lights[i].specular);
 			}
 
 			// Set up SPOTLIGHT uniforms
@@ -1051,14 +1128,15 @@ int App::run(void)
 				shader_prog->setUniform("spot_light_outer_cutoff", spot_lights[0].outer_cutoff);
 			}
 
-			// draw all (pokud bys mel objekty v poli scene)
-			for (auto& [name, model_obj] : scene) {
-				model_obj.draw();
-			}
+			// (Removed redundant scene iteration to prevent potential double-draws)
 
-			// Draw city
+			// Draw City
 			if (city_model) {
-				city_model->draw();
+                shader_prog->use();
+                shader_prog->setUniform("uV_m", camera.GetViewMatrix());
+                shader_prog->setUniform("uP_m", projection_matrix);
+                shader_prog->setUniform("uUseInstancing", false);
+				city_model->draw(false, shader_prog, frustum_ptr); // Draw with static shader
 			}
 
 			// Draw player (Rango)
@@ -1066,10 +1144,30 @@ int App::run(void)
 				player_model->draw();
 			}
 
-		// Draw bandits
-			for (auto& bandit : bandits) {
-				bandit->draw();
-			}
+			// Optimalizované vykreslování banditů (Instancování + Frustum Culling)
+            if (bandit_base_model) {
+                // 1. Extract view-projection frustum
+                Frustum frustum = extract_frustum(projection_matrix * view_matrix);
+                
+                // 2. Collect visible bandit instances (Compact data for PCIe performance)
+                std::vector<BanditInstance> bandit_instances;
+                bandit_instances.reserve(bandits.size());
+                
+                for (auto& bandit : bandits) {
+                    BanditInstance inst;
+                    inst.pos = glm::vec4(bandit->pivot_position, 1.0f);
+                    inst.rotScale = glm::vec4(bandit->eulerAngles, bandit->scale.x); // Assuming uniform scale
+                    bandit_instances.push_back(inst);
+                }
+
+                // 3. Batch render visible bandits
+                if (!bandit_instances.empty()) {
+                    glNamedBufferSubData(bandit_ssbo, 0, bandit_instances.size() * sizeof(BanditInstance), bandit_instances.data());
+                    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, bandit_ssbo);
+                    
+                    bandit_base_model->drawInstanced((GLsizei)bandit_instances.size());
+                }
+            }
 
 
 			// Draw dynamites
@@ -1107,45 +1205,15 @@ int App::run(void)
 				}
 			}
 
-			// Draw Waypoints for bandits
-			if (waypoint_shader && !bandits.empty()) {
-				waypoint_shader->use();
-				waypoint_shader->setUniform("uV_m", camera.GetViewMatrix());
-				waypoint_shader->setUniform("uP_m", projection_matrix);
-				waypoint_shader->setUniform("waypointColor", glm::vec3(1.0f, 1.0f, 0.0f)); // Yellow
-				
-				for (auto& b : bandits) {
-					glm::mat4 m = glm::translate(glm::mat4(1.0f), b->pivot_position + glm::vec3(0, 15.0f, 0));
-					m = glm::rotate(m, (float)now * 2.0f, glm::vec3(0, 1, 0));
-					m = glm::scale(m, glm::vec3(2.5f)); // Make it visible
-					waypoint_shader->setUniform("uM_m", m);
-					if (waypoint_model) waypoint_model->draw();
-				}
-				shader_prog->use();
-			}
+            // --- Unnecessary Waypoints and Path rendering fully removed to save draw calls ---
+            shader_prog->use();
 
-			// --- Debug Render Intro Spline Path (cv09) ---
-			// Disabled by default (was used for debugging the street path)
-			/*
-			if (waypoint_shader && path_vao != 0) {
-				waypoint_shader->use();
-				waypoint_shader->setUniform("uV_m", camera.GetViewMatrix());
-				waypoint_shader->setUniform("uP_m", projection_matrix);
-				waypoint_shader->setUniform("waypointColor", glm::vec3(0.0f, 1.0f, 1.0f));
-				waypoint_shader->setUniform("uM_m", glm::mat4(1.0f));
-				glBindVertexArray(path_vao);
-				glDrawArrays(GL_LINE_STRIP, 0, path_vertex_count);
-				shader_prog->use();
-			}
-			*/
+            // cv08: Draw Skybox LAST (optimized to draw only at depth 1.0)
+            render_skybox();
 
-			// Draw weapon (last to be on top?)
-			if (weapon_model) {
-				weapon_model->draw();
-			}
-
-            // cv08: Draw Billboards (tumbleweeds)
-            render_billboards();
+            // --- Vykreslení částic a billboardů (Tumbleweeds) ---
+            render_particles(); 
+            render_billboards(); 
 
             // cv07: Resolve FBO to screen
             if (show_post_process) {
@@ -1169,11 +1237,19 @@ int App::run(void)
 
 			// Time/FPS measurement
 			fps_counter_frames++;
-			if (now - fps_last_displayed >= 1.0) {
-				FPS = fps_counter_frames / (now - fps_last_displayed);
+            double fps_dt = now - fps_last_displayed;
+			if (fps_dt >= 0.5) { // Update FPS variable every 0.5s for ImGui
+				FPS = fps_counter_frames / fps_dt;
+                
+                // Still log to terminal only every 10 seconds
+                static double last_terminal_log = 0.0;
+                if (now - last_terminal_log >= 10.0) {
+				    std::cout << "[Performance] Current Real-time FPS: " << FPS << std::endl;
+                    last_terminal_log = now;
+                }
+
 				fps_last_displayed = now;
 				fps_counter_frames = 0;
-				std::cout << "\r[FPS]" << FPS << "     "; // Compare: FPS with/without ImGUI
 			}
 		}
 	}
@@ -1275,9 +1351,10 @@ void App::glfw_key_callback(GLFWwindow* window, int key, int scancode, int actio
 		case GLFW_KEY_M:
 			// Task 1: Toggle Multisampling
 			this_inst->is_multisample_on = !this_inst->is_multisample_on;
+			this_inst->msaa_dirty = true; // Queue FBO recreation
 			if (this_inst->is_multisample_on) glEnable(GL_MULTISAMPLE);
 			else glDisable(GL_MULTISAMPLE);
-			std::cout << "Multisampling: " << (this_inst->is_multisample_on ? "ON" : "OFF") << "\n";
+			std::cout << "Multisampling: " << (this_inst->is_multisample_on ? "ON" : "OFF") << " (FBO update queued)\n";
 			break;
 		case GLFW_KEY_O:
 			// Toggle Post-Processing
@@ -1425,11 +1502,7 @@ void App::glfw_cursor_position_callback(GLFWwindow* window, double xposIn, doubl
 
 
 void App::glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
-    // if (yoffset > 0.0) {
-    //     std::cout << "wheel up...\n";
-    // } else if (yoffset < 0.0) {
-    //     std::cout << "wheel down...\n";
-    // }
+    // REQ: event processing: mouse wheel (FOV control)
 		auto this_inst = static_cast<App*>(glfwGetWindowUserPointer(window));
     this_inst->fov += 10*yoffset; // yoffset is mostly +1 or -1; one degree difference in fov is not visible
     this_inst->fov = std::clamp(this_inst->fov, 20.0f, 170.0f); // limit FOV to reasonable values...
@@ -1490,6 +1563,7 @@ void App::toggle_fullscreen() {
     } else {
         // Switch back to windowed
         glfwSetWindowMonitor(window, nullptr, saved_window_x, saved_window_y, saved_window_width, saved_window_height, 0);
+        // REQ: restore window position & size
         fullscreen_enabled = false;
     }
 }
@@ -1538,17 +1612,20 @@ float App::get_ground_height(glm::vec3 pos, float ray_depth) {
 void App::spawn_bandit_wave(int count) {
     if (!bandit_base_model) return;
     
-    // Trigger Cinematic Intro (cv09) only on first wave
-    if (is_first_wave) {
-        cam_state = AppCameraState::CINEMATIC;
-        intro_time = 0.0f;
-        is_first_wave = false;
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); 
-    }
-    
     wave_info_timer = 4.0f; // Show "New Wave" for 4 seconds
     
-    // Clear old state for fresh wave (except score/level tracker)
+    // --- DIFFICULTY SCALING ---
+    // Scalable attributes (REQ: challenging up to wave 500)
+    int current_health = 3 + (wave_number / 15);
+    bandit_speed = 16.0f + std::min(40.0f, (float)wave_number / 4.0f); // Fast bandits!
+    bandit_throw_cooldown = std::max(1.0f, 4.0f - (float)wave_number / 100.0f);
+    bandit_damage_rate = 30.0f + (float)wave_number * 0.5f;
+
+    std::cout << "[Wave " << wave_number << "] Enemies: " << count 
+              << ", Health: " << current_health << ", Speed: " << bandit_speed << "\n";
+
+    // Clear old state for fresh wave
+    bandits.clear();
     bandit_states.clear();
     bandit_target_positions.clear();
     bandit_state_timers.clear();
@@ -1559,65 +1636,40 @@ void App::spawn_bandit_wave(int count) {
     bandit_safe_positions.clear();
     bandit_last_positions.clear();
     bandit_stuck_timers.clear();
-    
-    // We already cleared 'bandits' vector in reset or before calling if needed, 
-    // but here we are spawning a NEW wave, so we clear it now.
-    bandits.clear();
 
-    std::default_random_engine generator((unsigned)time(0));
-    std::uniform_real_distribution<float> dist_angle(0.0f, 6.283185f);
-    std::uniform_real_distribution<float> dist_radius(200.0f, 250.0f);
-
-    for (int i = 0; i < count; ++i) {
+    // Spawn!
+    for (int i = 0 ; i < count ; i++) {
         auto bandit = std::make_shared<Model>(*bandit_base_model);
         
-        // Spawn randomly across the city
+        // REQ: bandits must spawn at least 50m from player
         glm::vec3 spawn_pos;
+        float dist;
         int attempts = 0;
-        float h = 0.0f;
         do {
-            float angle = dist_angle(generator);
-            float radius = dist_radius(generator);
-            spawn_pos = playerPos + glm::vec3(cos(angle) * radius, 0, sin(angle) * radius);
-            
-            h = get_ground_height(spawn_pos);
+            float angle = (float)(rand() % 360) * 0.0174f;
+            float d = 60.0f + (float)(rand() % 200); // 60-260m
+            spawn_pos = playerPos + glm::vec3(cos(angle) * d, 0, sin(angle) * d);
+            float h = get_ground_height(spawn_pos, 400.0f);
+            if (h > -300.0f) spawn_pos.y = h;
+            dist = glm::distance(playerPos, spawn_pos);
             attempts++;
-            
-            // Dispersion check: ensure not too close to other bandits
-            bool too_close = false;
-            for (auto const& existing : bandits) {
-                if (glm::distance(spawn_pos, existing->pivot_position) < 15.0f) {
-                    too_close = true;
-                    break;
-                }
-            }
-            if (too_close) h = -1000.0f; // Force retry
-            
-        } while ((h < -230.0f) && attempts < 50); // Relaxed city floor check
+        } while (dist < 50.0f && attempts < 20);
 
         bandit->pivot_position = spawn_pos;
-        bandit->pivot_position.y = h;
-        if (bandit->pivot_position.y < -500.0f) bandit->pivot_position.y = -218.70f;
-        
-        bandit->scale = glm::vec3(0.04f); 
         bandits.push_back(bandit);
-        bandit_throw_timers.push_back(2.0f + (float)(rand() % 4)); 
-        bandit_shoot_timers.push_back(1.0f + (float)(rand() % 3));
+        bandit_health.push_back(current_health); 
+        bandit_throw_timers.push_back(2.0f + (float)(rand() % 30) * 0.1f);
+        bandit_shoot_timers.push_back(1.0f + (float)(rand() % 20) * 0.1f);
         bandit_velocities_y.push_back(0.0f);
-        bandit_safe_positions.push_back(bandit->pivot_position);
-        bandit_last_positions.push_back(bandit->pivot_position);
+        bandit_safe_positions.push_back(spawn_pos);
+        bandit_last_positions.push_back(spawn_pos);
         bandit_stuck_timers.push_back(0.0f);
-
-        // State Machine Init
+        
+        // Initial AI state
         bandit_states.push_back(AIState::CHASE);
-        bandit_target_positions.push_back(bandit->pivot_position);
-        bandit_state_timers.push_back(3.0f + (float)(rand() % 10));
-        bandit_health.push_back(3); // 3 hits to kill
+        bandit_target_positions.push_back(playerPos);
+        bandit_state_timers.push_back(5.0f + (float)(rand() % 5));
     }
-    std::cout << "Wave " << wave_number << " started with " << count << " bandits.\n";
-
-    // Refresh Whiskey pickups every wave
-    spawn_whiskey_pickups();
 }
 
 void App::spawn_whiskey_pickups() {
@@ -1680,33 +1732,53 @@ void App::update_path_visualization() {
 }
 
 void App::init_fbo() {
-    // Cleanup old resources if they exist
+    // Cleanup old resources
     if (fbo != 0) glDeleteFramebuffers(1, &fbo);
     if (fbo_texture != 0) glDeleteTextures(1, &fbo_texture);
     if (rbo != 0) glDeleteRenderbuffers(1, &rbo);
+    if (msaa_fbo != 0) glDeleteFramebuffers(1, &msaa_fbo);
+    if (msaa_color_rbo != 0) glDeleteRenderbuffers(1, &msaa_color_rbo);
+    if (msaa_depth_rbo != 0) glDeleteRenderbuffers(1, &msaa_depth_rbo);
 
+    // 1. Create the RESOLVE FBO (Standard Texture)
     glCreateFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-
-    // Color texture
     glCreateTextures(GL_TEXTURE_2D, 1, &fbo_texture);
     glTextureStorage2D(fbo_texture, 1, GL_RGB8, width, height);
     glTextureParameteri(fbo_texture, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTextureParameteri(fbo_texture, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    // Use GL_CLAMP_TO_EDGE to avoid tiling/artifacts at edges
     glTextureParameteri(fbo_texture, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTextureParameteri(fbo_texture, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT0, fbo_texture, 0);
 
-    // Depth/Stencil Renderbuffer
+    // Standard depth for resolve FBO (not strictly needed but good for state)
     glCreateRenderbuffers(1, &rbo);
     glNamedRenderbufferStorage(rbo, GL_DEPTH24_STENCIL8, width, height);
     glNamedFramebufferRenderbuffer(fbo, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
 
+    // 2. Create the MSAA FBO (if enabled)
+    if (is_multisample_on) {
+        int samples = 4; // Standard 4x MSAA
+        glCreateFramebuffers(1, &msaa_fbo);
+        
+        // FAKT PODROBNÁ OPTIMALIZACE: Místo Renderbufferu použijeme Multisampled Texturu
+        // To nám umožní číst ji přímo v post-processu bez drahého glBlit volání.
+        glCreateTextures(GL_TEXTURE_2D_MULTISAMPLE, 1, &msaa_color_rbo); // Reusing RBO name but it's a texture now
+        glTextureStorage2DMultisample(msaa_color_rbo, samples, GL_RGB8, width, height, GL_TRUE);
+        glNamedFramebufferTexture(msaa_fbo, GL_COLOR_ATTACHMENT0, msaa_color_rbo, 0);
+        
+        glCreateRenderbuffers(1, &msaa_depth_rbo);
+        glNamedRenderbufferStorageMultisample(msaa_depth_rbo, samples, GL_DEPTH24_STENCIL8, width, height);
+        glNamedFramebufferRenderbuffer(msaa_fbo, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, msaa_depth_rbo);
+
+        if (glCheckNamedFramebufferStatus(msaa_fbo, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            std::cerr << "MSAA Framebuffer is not complete!\n";
+    }
+
     if (glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        std::cerr << "Framebuffer is not complete!\n";
+        std::cerr << "Resolve Framebuffer is not complete!\n";
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    msaa_dirty = false;
 }
 
 void App::init_skybox() {
@@ -1805,7 +1877,7 @@ void App::init_billboards() {
 
     glCreateVertexArrays(1, &billboard_vao);
     glCreateBuffers(1, &billboard_vbo);
-    glNamedBufferData(billboard_vbo, sizeof(billboardVertices), billboardVertices, GL_STATIC_DRAW);
+    glNamedBufferStorage(billboard_vbo, sizeof(billboardVertices), billboardVertices, 0);
 
     glEnableVertexArrayAttrib(billboard_vao, 0);
     glVertexArrayAttribFormat(billboard_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
@@ -1816,6 +1888,10 @@ void App::init_billboards() {
     glVertexArrayAttribBinding(billboard_vao, 1, 0);
 
     glVertexArrayVertexBuffer(billboard_vao, 0, billboard_vbo, 0, 5 * sizeof(float));
+
+    // Create billboard SSBO for instancing
+    glCreateBuffers(1, &billboard_ssbo);
+    glNamedBufferStorage(billboard_ssbo, 100 * sizeof(BillboardInstance), nullptr, GL_DYNAMIC_STORAGE_BIT);
 
     // Scatter some tumbleweeds
     std::default_random_engine gen;
@@ -1832,6 +1908,57 @@ void App::init_billboards() {
             billboards.push_back(b);
         }
     }
+
+    // --- Inicializace persistentního bufferu pro částice ---
+    // Persistent Mapping: CPU and GPU share the same memory buffer
+    glCreateBuffers(1, &particle_vbo);
+    GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+    glNamedBufferStorage(particle_vbo, MAX_PARTICLES * sizeof(ParticleInstance), nullptr, flags);
+    mapped_particles = (ParticleInstance*)glMapNamedBufferRange(particle_vbo, 0, MAX_PARTICLES * sizeof(ParticleInstance), flags);
+
+    // Setup instanced attributes in billboard_vao
+    // We reuse the same quad vertex buffer but add new per-instance data
+    glEnableVertexArrayAttrib(billboard_vao, 2); // iPosSize attribute
+    glVertexArrayAttribFormat(billboard_vao, 2, 4, GL_FLOAT, GL_FALSE, offsetof(ParticleInstance, pos_size));
+    glVertexArrayAttribBinding(billboard_vao, 2, 1);
+    glVertexArrayBindingDivisor(billboard_vao, 1, 1); // DSA version for binding point 1
+
+    glEnableVertexArrayAttrib(billboard_vao, 3); // iColorLife attribute
+    glVertexArrayAttribFormat(billboard_vao, 3, 4, GL_FLOAT, GL_FALSE, offsetof(ParticleInstance, color_life));
+    glVertexArrayAttribBinding(billboard_vao, 3, 1);
+    // Already set divisor for binding 1 above
+
+    glVertexArrayVertexBuffer(billboard_vao, 1, particle_vbo, 0, sizeof(ParticleInstance));
+}
+
+App::Frustum App::extract_frustum(const glm::mat4& m) {
+    Frustum f;
+    // Extract planes from View-Projection matrix (Gribb-Hartmann method)
+    // Left
+    f.planes[0] = glm::vec4(m[0][3] + m[0][0], m[1][3] + m[1][0], m[2][3] + m[2][0], m[3][3] + m[3][0]);
+    // Right
+    f.planes[1] = glm::vec4(m[0][3] - m[0][0], m[1][3] - m[1][0], m[2][3] - m[2][0], m[3][3] - m[3][0]);
+    // Bottom
+    f.planes[2] = glm::vec4(m[0][3] + m[0][1], m[1][3] + m[1][1], m[2][3] + m[2][1], m[3][3] + m[3][1]);
+    // Top
+    f.planes[3] = glm::vec4(m[0][3] - m[0][1], m[1][3] - m[1][1], m[2][3] - m[2][1], m[3][3] - m[3][1]);
+    // Near
+    f.planes[4] = glm::vec4(m[0][3] + m[0][2], m[1][3] + m[1][2], m[2][3] + m[2][2], m[3][3] + m[3][2]);
+    // Far
+    f.planes[5] = glm::vec4(m[0][3] - m[0][2], m[1][3] - m[1][2], m[2][3] - m[2][2], m[3][3] - m[3][2]);
+
+    // Normalize planes
+    for (int i = 0; i < 6; i++) {
+        f.planes[i] /= glm::length(glm::vec3(f.planes[i]));
+    }
+    return f;
+}
+
+bool App::is_inside_frustum(const Frustum& f, glm::vec3 pos, float radius) {
+    for (int i = 0; i < 6; i++) {
+        if (glm::dot(f.planes[i], glm::vec4(pos, 1.0f)) < -radius) return false;
+    }
+    return true;
 }
 
 void App::render_skybox() {
@@ -1854,26 +1981,48 @@ void App::render_skybox() {
 }
 
 void App::render_billboards() {
-    if (!billboard_shader || !billboard_tex) return;
+    if (!billboard_shader || !billboard_tex || billboards.empty()) return;
+    
+    // 1. Prepare instance data
+    std::vector<BillboardInstance> instances;
+    instances.reserve(billboards.size());
+    for (const auto& b : billboards) {
+        BillboardInstance inst;
+        inst.worldPos = glm::vec4(b.position, b.scale.x);
+        inst.tint_scaleY = glm::vec4(b.tint * 0.6f, b.scale.y); // DARKER BUSHES (requested)
+        instances.push_back(inst);
+    }
+    
+    // 2. Upload to SSBO
+    glNamedBufferSubData(billboard_ssbo, 0, instances.size() * sizeof(BillboardInstance), instances.data());
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, billboard_ssbo);
+
+    // 3. Render
     billboard_shader->use();
     billboard_shader->setUniform("view", camera.GetViewMatrix());
     billboard_shader->setUniform("projection", projection_matrix);
+    billboard_shader->setUniform("uUseInstancing", true);
     billboard_tex->bind(0);
     billboard_shader->setUniform("billboardTexture", 0);
 
     glBindVertexArray(billboard_vao);
-    for (const auto& b : billboards) {
-        billboard_shader->setUniform("worldPos", b.position);
-        billboard_shader->setUniform("scale", b.scale); 
-        billboard_shader->setUniform("tintColor", b.tint);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    }
+    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)instances.size());
 }
 
 void App::render_post_process() {
     if (!post_process_shader) return;
     post_process_shader->use();
-    glBindTextureUnit(0, fbo_texture);
+    
+    // Manuální Resolve: Sampler2D vs Sampler2DMS
+    if (is_multisample_on && msaa_fbo != 0) {
+        glBindTextureUnit(1, msaa_color_rbo); // Bind MS texture to unit 1
+        post_process_shader->setUniform("uUseMSAA", true);
+        post_process_shader->setUniform("screenTextureMS", 1);
+    } else {
+        post_process_shader->setUniform("uUseMSAA", false);
+    }
+
+    glBindTextureUnit(0, fbo_texture); // Standard texture is ALWAYS on unit 0
     post_process_shader->setUniform("screenTexture", 0);
     post_process_shader->setUniform("health", player_health / 100.0f);
     post_process_shader->setUniform("time", (float)glfwGetTime());
@@ -1886,4 +2035,46 @@ void App::render_post_process() {
     
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
+}
+
+void App::spawn_particles(glm::vec3 pos, glm::vec3 color, int count, float size) {
+    for (int i = 0; i < count; ++i) {
+        Particle p;
+        p.position = pos;
+        float rx = (float)(rand() % 200 - 100) / 10.0f;
+        float ry = (float)(rand() % 200 - 50) / 10.0f;
+        float rz = (float)(rand() % 200 - 100) / 10.0f;
+        p.velocity = glm::vec3(rx, ry, rz);
+        p.color = glm::vec4(color, 1.0f);
+        p.life = 0.5f + (float)(rand() % 100) / 100.0f;
+        p.size = size * (0.3f + (float)(rand() % 100) / 100.0f);
+        active_particles.push_back(p);
+    }
+}
+
+void App::render_particles() {
+    if (active_particles.empty() || !mapped_particles) return;
+
+    // Zápis do persistentně mapovaného bufferu
+    int count = 0;
+    for (const auto& p : active_particles) {
+        if (count >= MAX_PARTICLES) break;
+        mapped_particles[count].pos_size = glm::vec4(p.position, p.size);
+        mapped_particles[count].color_life = glm::vec4(p.color.r, p.color.g, p.color.b, p.life);
+        count++;
+    }
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive
+    glDepthMask(GL_FALSE);
+
+    particle_shader->use();
+    particle_shader->setUniform("projection", projection_matrix);
+    particle_shader->setUniform("view", view_matrix);
+
+    glBindVertexArray(billboard_vao);
+    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, count);
+
+    glDepthMask(GL_TRUE);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }

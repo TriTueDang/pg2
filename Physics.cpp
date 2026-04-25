@@ -420,13 +420,16 @@ PhysicsEngine::KCCResult PhysicsEngine::update_character(
     }
 
     // SNAP LOGIC: Catch anything within reach BELOW the waist-start
+    bool is_jumping = res.new_velocity_y > 0.01f;
+
     if (target_ground > -500.0f && res.new_position.y <= target_ground + 1.0f) {
-        // Only snap if we are falling OR if the ground is within step height (walking up)
-        if (res.new_velocity_y <= 0.01f || target_ground <= current_pos.y + step_height + 1.0f) {
+        if (!is_jumping) {
+            // Only snap if we are falling OR if the ground is within step height (walking up)
             res.new_position.y = target_ground;
             res.new_velocity_y = 0.0f;
             res.is_on_ground = true;
         } else {
+            // We are jumping up! Do NOT snap to ground and cancel the jump.
             res.is_on_ground = false;
         }
     } else {

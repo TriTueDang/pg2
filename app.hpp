@@ -95,8 +95,6 @@ private:
     GLFWwindow* window = nullptr;
 
     std::shared_ptr<ShaderProgram> shader_prog;
-    std::shared_ptr<ShaderProgram> waypoint_shader;
-    std::shared_ptr<Model> waypoint_model;
     std::shared_ptr<Model> city_model;
     std::shared_ptr<Model> player_model;
     std::shared_ptr<Model> weapon_model;
@@ -121,12 +119,24 @@ private:
     struct Billboard {
         glm::vec3 position;
         glm::vec2 scale;
-        glm::vec3 tint = glm::vec3(1.0f);
+        glm::vec3 tint;
     };
+
+    struct BillboardInstance {
+        glm::vec4 worldPos; // xyz=pos, w=scaleX
+        glm::vec4 tint_scaleY; // rgb=tint, a=scaleY
+    };
+
+    struct BanditInstance {
+        glm::vec4 pos;      // xyz = position, w = unused
+        glm::vec4 rotScale; // xyz = eulerAngles, w = scale
+    };
+
     std::vector<Billboard> billboards;
     std::shared_ptr<Texture> billboard_tex;
     GLuint billboard_vao = 0;
     GLuint billboard_vbo = 0;
+    GLuint billboard_ssbo = 0;
 
     // Lighting
     DirectionalLight dir_light;
@@ -150,10 +160,10 @@ private:
     // Gameplay
     float player_health = 100.0f;
     bool is_player_dead = false;
-    const float bandit_chase_dist = 50.0f;
-    const float bandit_attack_dist = 4.0f;
-    const float bandit_damage_rate = 30.0f; // health per second
-    const float bandit_speed = 16.0f;
+    float bandit_chase_dist = 50.0f;
+    float bandit_attack_dist = 4.0f;
+    float bandit_damage_rate = 30.0f; // health per second
+    float bandit_speed = 16.0f;
 
 
     // Physics
@@ -207,6 +217,28 @@ private:
         bool isFromPlayer = true;
     };
 
+    struct Particle {
+        glm::vec3 position;
+        glm::vec3 velocity;
+        glm::vec4 color;
+        float life; // 1.0 to 0.0
+        float size;
+    };
+
+    struct ParticleInstance {
+        glm::vec4 pos_size;  // (x, y, z, size)
+        glm::vec4 color_life; // (r, g, b, life)
+    };
+
+    std::vector<Particle> active_particles;
+    std::shared_ptr<ShaderProgram> particle_shader;
+    
+    GLuint particle_vbo = 0;
+    ParticleInstance* mapped_particles = nullptr;
+    const int MAX_PARTICLES = 2000;
+
+    void spawn_particles(glm::vec3 pos, glm::vec3 color, int count, float size = 0.5f);
+
     struct WhiskeyPickup {
         glm::vec3 position;
         float rotation = 0.0f;
@@ -220,9 +252,17 @@ private:
     std::vector<Bullet> active_bullets;
     std::shared_ptr<Model> bullet_model;
 
-    const float bandit_throw_cooldown = 4.0f;
+    float bandit_throw_cooldown = 4.0f;
     const float dynamite_damage = 40.0f;
     const float dynamite_radius = 12.0f;
+
+    // --- Výkonnostní optimalizace ---
+    GLuint bandit_ssbo = 0;
+    struct Frustum {
+        glm::vec4 planes[6];
+    };
+    Frustum extract_frustum(const glm::mat4& viewProj);
+    bool is_inside_frustum(const Frustum& f, glm::vec3 pos, float radius);
 
     // Spline / Path (cv09)
     void init_path_visualization();
@@ -230,10 +270,11 @@ private:
 
     // Cinematic Camera (cv09)
     enum class AppCameraState { GAMEPLAY, CINEMATIC, TRANSITION };
-    AppCameraState cam_state = AppCameraState::GAMEPLAY;
+    AppCameraState cam_state = AppCameraState::CINEMATIC;
     PG2::CatmullRomSpline intro_spline;
     float intro_time = 0.0f;
     float intro_duration = 12.0f; // seconds
+    bool intro_done = false; // Persistent flag to prevent replay on window resize
     
     struct {
         glm::vec3 start_pos, end_pos;
@@ -246,6 +287,12 @@ private:
     float invulnerability_timer = 0.0f;
     float wave_info_timer = 0.0f;
 
+    // Performance Optimization Cache
+    std::vector<std::string> point_light_pos_names;
+    std::vector<std::string> point_light_amb_names;
+    std::vector<std::string> point_light_diff_names;
+    std::vector<std::string> point_light_spec_names;
+
     // Spline visual (keep VBO/VAO if needed for debug, otherwise remove)
     GLuint path_vao = 0, path_vbo = 0;
     int path_vertex_count = 0;
@@ -257,7 +304,10 @@ private:
     void render_skybox();
     void render_billboards();
     GLuint post_process_vao = 0;
+    GLuint msaa_fbo = 0, msaa_color_rbo = 0, msaa_depth_rbo = 0;
+    bool msaa_dirty = false; // Flag to recreate FBOs if MSAA state changes
     void render_post_process();
+    void render_particles();
     GLuint load_cubemap(std::vector<std::string> faces);
 
     // initialization helpers
