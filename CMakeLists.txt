@@ -43,6 +43,7 @@ set(PROJECT_SOURCES
     Physics.cpp
     Physics.hpp
     tests.cpp
+    tests.hpp
 )
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
