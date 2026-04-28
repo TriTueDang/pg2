@@ -115,12 +115,12 @@ bool App::init() {
         glEnable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE); // Ensure triangle is visible from both sides
         // REQ: antialiasing (MSAA 4x, viz init_glfw)
-        glEnable(GL_MULTISAMPLE); 
-        
+        glEnable(GL_MULTISAMPLE);
+
         // cv07: Enable Blending
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        
+
         glCreateVertexArrays(1, &post_process_vao); // Dedicated VAO for post-processing
 
         // -------------------------
@@ -142,10 +142,10 @@ bool App::init() {
         init_billboards();
 
         // Initialize ImGUI
-		init_imgui();
+				init_imgui();
 
-		// Initialize OpenCV (if needed)
-		init_opencv();
+				// Initialize OpenCV (if needed)
+				init_opencv();
 
         // Performance: Pre-calculate light uniform names to avoid per-frame allocations
         for (int i = 0; i < 3; i++) {
@@ -231,7 +231,7 @@ void App::init_glfw(void)
 	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 
 	// REQ: antialiasing (MSAA 4x) - disabled for backbuffer to optimize PCIe on external GPUs
-	glfwWindowHint(GLFW_SAMPLES, 0); 
+	glfwWindowHint(GLFW_SAMPLES, 0);
 
 	// Task 1.3: hide window during initialization
 	glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
@@ -260,8 +260,8 @@ void App::init_glfw(void)
 	glfwSetCursorPosCallback(window, cursorPositionCallback);
 	glfwSetScrollCallback(window, glfw_scroll_callback);
 
-    // Ensure width and height are initialized correctly from the start (CV requirement)
-    glfwGetFramebufferSize(window, &width, &height);
+	// Ensure width and height are initialized correctly from the start (CV requirement)
+	glfwGetFramebufferSize(window, &width, &height);
 }
 
 // ---------------------------------------------------------------------------
@@ -327,7 +327,7 @@ void App::print_glm_info()
 
 void App::init_assets(void) {
     shader_prog = ShaderProgram::from_files("shader.vert", "shader.frag");
-    
+
     // Load textures
     auto rango_tex = std::make_shared<Texture>("assets/rango/source/tex_65.png", Texture::Interpolation::linear_mipmap_linear, true); // Re-enabled flip
     auto revolver_tex = std::make_shared<Texture>("assets/38-special-revolver/textures/rev_d.tga.png");
@@ -366,11 +366,11 @@ void App::init_assets(void) {
         bandits.clear();
         bandit_base_model = bandit_base; // Store base model for wave spawning
         bandit_base_model->scale = glm::vec3(0.05f); // Requested scale
-        
+
         // Initialize Bandit SSBO (Modern OpenGL instancing)
         glCreateBuffers(1, &bandit_ssbo);
         glNamedBufferData(bandit_ssbo, 1000 * (sizeof(glm::vec4) * 2), nullptr, GL_STREAM_DRAW); // Pre-allocate for 1000 bandits
-        
+
         bandits.clear();
         bandit_throw_timers.clear();
         // spawn_bandit_wave(5); // REQ: delayed spawn (moved to run loop after intro)
@@ -390,8 +390,8 @@ void App::init_assets(void) {
     try {
         bullet_model = std::make_shared<Model>("assets/dynamite/source/Dynamite.obj", shader_prog, city_tex);
         bullet_model->scale = glm::vec3(0.15f);
-    } catch (...) { 
-        std::cerr << "Failed to load bullet model\n"; 
+    } catch (...) {
+        std::cerr << "Failed to load bullet model\n";
     }
 
     // Load cv07/cv08 shaders
@@ -401,16 +401,16 @@ void App::init_assets(void) {
         billboard_shader = ShaderProgram::from_files("billboard.vert", "billboard.frag");
         particle_shader = ShaderProgram::from_files("particle.vert", "particle.frag");
         billboard_tex = std::make_shared<Texture>("assets/tumbleweed.png", Texture::Interpolation::linear, true);
-    } catch (...) { 
-        std::cerr << "Failed to load core shaders or assets\n"; 
+    } catch (...) {
+        std::cerr << "Failed to load core shaders or assets\n";
     }
 
     // Load Whiskey
     try {
         whiskey_model = std::make_shared<Model>("assets/Whiskey/MushroomPotion.obj", shader_prog, whiskey_tex);
-        whiskey_model->scale = glm::vec3(4.0f); 
-    } catch (...) { 
-        std::cerr << "Failed to load whiskey model\n"; 
+        whiskey_model->scale = glm::vec3(4.0f);
+    } catch (...) {
+        std::cerr << "Failed to load whiskey model\n";
     }
 
     shader_prog->use();
@@ -514,12 +514,12 @@ int App::run(void)
 		glViewport(0, 0, width, height);
 
 		// Starting position
-		playerPos = glm::vec3(-121.64f, -215.70f, 63.23f); 
+		playerPos = glm::vec3(-121.64f, -215.70f, 63.23f);
 		float initial_ground = physics.get_ground_height(playerPos);
-		if (initial_ground > -500.0f) playerPos.y = initial_ground; 
-		
+		if (initial_ground > -500.0f) playerPos.y = initial_ground;
+
 		camera.AttachTo(&playerPos, glm::vec3(0, 6.0f, 0), 12.0f); // Attach with offset and distance
-		camera.MovementSpeed = 20.0f; 
+		camera.MovementSpeed = 20.0f;
 		double last_frame_time = glfwGetTime();
 
 		while (!glfwWindowShouldClose(window))
@@ -587,10 +587,10 @@ int App::run(void)
 
 				// Crosshair
 				ImGui::GetForegroundDrawList()->AddCircle(
-					ImVec2(width / 2.0f, height / 2.0f - 135.0f), 
-					10.0f, 
-					IM_COL32(255, 255, 255, 150), 
-					16, 
+					ImVec2(width / 2.0f, height / 2.0f - 135.0f),
+					10.0f,
+					IM_COL32(255, 255, 255, 150),
+					16,
 					2.0f
 				);
 
@@ -606,8 +606,8 @@ int App::run(void)
 
 			// --- Camera State Machine (cv09) ---
 			if (cam_state == AppCameraState::CINEMATIC) {
-                if (intro_done) { 
-                    cam_state = AppCameraState::GAMEPLAY; 
+                if (intro_done) {
+                    cam_state = AppCameraState::GAMEPLAY;
                     continue; // Skip this frame's cinematic update and proceed to gameplay
                 }
 				intro_time += delta_t * (intro_spline.getMaxT() / intro_duration);
@@ -617,7 +617,7 @@ int App::run(void)
 					cam_transition.progress = 0.0f;
 					cam_transition.start_pos = camera.Position;
 					cam_transition.start_front = camera.Front;
-					
+
 					// Calculate standard target (simulate a frame of gameplay logic)
 					camera.HandleCollision(physics);
 					cam_transition.end_pos = camera.Position;
@@ -636,9 +636,9 @@ int App::run(void)
 					// Smooth interpolation
 					float t = cam_transition.progress;
 					float smooth_t = t * t * (3 - 2 * t); // Smoothstep
-					
+
 					// We need the gameplay target to lerp towards it
-					camera.HandleCollision(physics); 
+					camera.HandleCollision(physics);
 					cam_transition.end_pos = camera.Position;
 					cam_transition.end_front = camera.Front;
 
@@ -681,7 +681,7 @@ int App::run(void)
 			}
 
 			// --- Player and Camera Logic (3rd Person) ---
-			
+
 			glm::vec3 moveDir(0.0f);
 			if (!is_player_dead && cam_state == AppCameraState::GAMEPLAY) {
 				if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) moveDir += camera.Front;
@@ -689,10 +689,10 @@ int App::run(void)
 				if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) moveDir -= camera.Right;
 				if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) moveDir += camera.Right;
 			}
-			
+
 			is_moving = false;
 			if (glm::length(moveDir) > 0.0f) {
-				moveDir.y = 0.0f; 
+				moveDir.y = 0.0f;
 				if (glm::length(moveDir) > 0.0f) {
 					is_moving = true;
 				}
@@ -701,7 +701,7 @@ int App::run(void)
 			// Integrated Physics Update with Sub-stepping (Anti-Tunneling at Low FPS)
 			float remaining_time = delta_t;
 			const float MAX_STEP = 0.01f; // Vynutí garantovanou 100Hz kolizní přesnost
-			
+
 			while (remaining_time > 0.0f) {
 				float step_dt = std::min(remaining_time, MAX_STEP);
 				glm::vec3 step_movement(0.0f);
@@ -710,10 +710,10 @@ int App::run(void)
 				}
 
 				auto kcc = physics.update_character(
-					playerPos, 
-					step_movement, 
-					velocity_y, 
-					gravity, 
+					playerPos,
+					step_movement,
+					velocity_y,
+					gravity,
 					2.0f, // Lower step height (CV: fences are now blocked)
 					1.5f, // Robustnější poloměr detekce zamezující průchodu tenkými stěnami a mezerami (anti-tunneling)
 					step_dt
@@ -736,28 +736,28 @@ int App::run(void)
 				camera.HandleCollision(physics);
 			}
 
-			// Safety floor check: if we fall somehow, snap back. 
+			// Safety floor check: if we fall somehow, snap back.
 			// Threshold increased to avoid false positives from the new robust KCC.
 			if (playerPos.y < -1500.0f) {
 				playerPos = glm::vec3(-121.64f, -215.70f, 63.23f);
 				velocity_y = 0;
 			}
-			
+
 			// Update bandit heights and implement AI
 			for (size_t i = 0; i < bandits.size(); ++i) {
 				auto& bandit = bandits[i];
-				
+
 				if (frame_count % 10 == 0) {
 					float bg = physics.get_ground_height(bandit->pivot_position, 30.0f);
 					if (bg > -500.0f) bandit->pivot_position.y = bg;
 				}
 
 				float dist = glm::distance(playerPos, bandit->pivot_position);
-				
+
 				// --- SMARTER AI STATE MACHINE ---
 				if (i < bandit_states.size()) {
 					bandit_state_timers[i] -= delta_t;
-					
+
 					// Transitions
 					if (bandit_states[i] == AIState::CHASE && (bandit_state_timers[i] <= 0 || dist < 12.0f)) {
 						bool found_cover = false;
@@ -825,8 +825,8 @@ int App::run(void)
 					if (dist < 50.0f && dist > 10.0f) {
 						bandit_throw_timers[i] -= delta_t;
 						if (bandit_throw_timers[i] <= 0) {
-							Dynamite d; d.position = bandit->pivot_position + glm::vec3(0, 5, 0); 
-							d.velocity = glm::normalize(playerPos - d.position) * 25.0f + glm::vec3(0, 10, 0); 
+							Dynamite d; d.position = bandit->pivot_position + glm::vec3(0, 5, 0);
+							d.velocity = glm::normalize(playerPos - d.position) * 25.0f + glm::vec3(0, 10, 0);
 							active_dynamites.push_back(d); bandit_throw_timers[i] = 2.5f + (float)(rand() % 2); // Faster throws
 						}
 					}
@@ -854,7 +854,7 @@ int App::run(void)
 						it->timer = 0; // Detonate on impact with wall/ceiling/anything
                         it->position = hit.point; // Snap to hit point for accurate explosion
 					}
-					
+
 					it->velocity.y += gravity * delta_t;
 					it->position += it->velocity * delta_t;
 
@@ -893,7 +893,7 @@ int App::run(void)
                             spawn_particles(hit.point, glm::vec3(0.6f, 0.5f, 0.4f), 5, 0.2f);
                             return true;
                         }
-                        
+
                         b.position += b.velocity * delta_t;
                         b.life -= delta_t;
                         if (b.life <= 0.0f) return true;
@@ -901,7 +901,7 @@ int App::run(void)
                         // Collision with bandits (ONLY if bullet is from player)
                         for (size_t i = 0; i < bandits.size() && b.isFromPlayer; ++i) {
                             float dist = glm::distance(b.position, bandits[i]->pivot_position + glm::vec3(0, 4.0f, 0));
-                            if (dist < 4.0f) { 
+                            if (dist < 4.0f) {
                                 spawn_particles(b.position, glm::vec3(1.0f, 0.1f, 0.1f), 10, 0.3f);
                                 bandit_health[i]--;
                                 if (bandit_health[i] <= 0) {
@@ -938,7 +938,7 @@ int App::run(void)
 			if (cam_state == AppCameraState::GAMEPLAY && !is_first_wave && bandits.size() == 0 && !is_player_dead) {
 				wave_number++;
                 // REQ Formula: linearly scale so that wave 50 has 40 bandits. (5 + (50-1)*k = 40 => 49k=35 => k=35/49=5/7)
-				spawn_bandit_wave(5 + (wave_number - 1) * 5 / 7); 
+				spawn_bandit_wave(5 + (wave_number - 1) * 5 / 7);
                 wave_info_timer = 4.0f;
 			}
 
@@ -947,7 +947,7 @@ int App::run(void)
 				whiskey_respawn_timer += delta_t;
 				int activeCount = 0;
 				for (const auto& wp : whiskey_pickups) if (wp.active) activeCount++;
-				
+
 				if (whiskey_respawn_timer > 90.0f) {
 					if (activeCount < 3) {
 						spawn_single_whiskey();
@@ -962,7 +962,7 @@ int App::run(void)
 				if (!wp.active) continue;
 				wp.rotation += delta_t * 90.0f; // 90 deg/sec
 				wp.position.y += sin(glfwGetTime() * 2.0f) * 0.01f; // Bobbing effect
-				
+
 				float d = glm::distance(playerPos, wp.position);
 				if (d < 5.0f) {
 					player_health = std::min(100.0f, player_health + 25.0f);
@@ -987,15 +987,15 @@ int App::run(void)
 				bobbing = sin(walk_anim_time) * 0.15f; // More bobbing
 			} else if (is_on_ground) {
 				walk_anim_time += delta_t * 2.5f;
-				bobbing = sin(walk_anim_time) * 0.02f; 
+				bobbing = sin(walk_anim_time) * 0.02f;
 			}
 
 			// Adjusting player model (Rango)
 			if (player_model) {
 				player_model->pivot_position = playerPos; // Position exactly on ground
-				player_model->pivot_position.y += bobbing; 
+				player_model->pivot_position.y += bobbing;
 				player_model->eulerAngles.y = camera.Yaw + 90.0f;
-				player_model->eulerAngles.z = 0.0f; 
+				player_model->eulerAngles.z = 0.0f;
 
 				// Procedural Leg Animation
 				if (is_moving && is_on_ground) {
@@ -1017,11 +1017,11 @@ int App::run(void)
 				// Position weapon relative to player with offset
 				glm::vec3 w_off = glm::vec3(4.0f, 5.0f, 2.0f); // Fast fix visibility
 				weapon_model->pivot_position = playerPos + camera.Right * w_off.x + camera.Up * w_off.y + camera.Front * w_off.z;
-				
+
 				// Standard rotation based on camera
 				weapon_model->eulerAngles.y = camera.Yaw + weapon_rotation.y;
 				weapon_model->eulerAngles.x = -camera.Pitch + weapon_rotation.x;
-				weapon_model->eulerAngles.z = weapon_rotation.z; 
+				weapon_model->eulerAngles.z = weapon_rotation.z;
 
 				if (shoot_anim_time > 0.0f) {
 					weapon_model->eulerAngles.x += sin(shoot_anim_time * 15.0f) * 10.0f;
@@ -1075,12 +1075,12 @@ int App::run(void)
                 } else {
                     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
                 }
-                glViewport(0, 0, width, height); 
+                glViewport(0, 0, width, height);
             } else {
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);
-                glViewport(0, 0, width, height); 
+                glViewport(0, 0, width, height);
             }
-            glEnable(GL_DEPTH_TEST); 
+            glEnable(GL_DEPTH_TEST);
 
 			// Clear OpenGL canvas
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1148,11 +1148,11 @@ int App::run(void)
             if (bandit_base_model) {
                 // 1. Extract view-projection frustum
                 Frustum frustum = extract_frustum(projection_matrix * view_matrix);
-                
+
                 // 2. Collect visible bandit instances (Compact data for PCIe performance)
                 std::vector<BanditInstance> bandit_instances;
                 bandit_instances.reserve(bandits.size());
-                
+
                 for (auto& bandit : bandits) {
                     BanditInstance inst;
                     inst.pos = glm::vec4(bandit->pivot_position, 1.0f);
@@ -1164,7 +1164,7 @@ int App::run(void)
                 if (!bandit_instances.empty()) {
                     glNamedBufferSubData(bandit_ssbo, 0, bandit_instances.size() * sizeof(BanditInstance), bandit_instances.data());
                     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, bandit_ssbo);
-                    
+
                     bandit_base_model->drawInstanced((GLsizei)bandit_instances.size());
                 }
             }
@@ -1212,8 +1212,8 @@ int App::run(void)
             render_skybox();
 
             // --- Vykreslení částic a billboardů (Tumbleweeds) ---
-            render_particles(); 
-            render_billboards(); 
+            render_particles();
+            render_billboards();
 
             // cv07: Resolve FBO to screen
             if (show_post_process) {
@@ -1240,7 +1240,7 @@ int App::run(void)
             double fps_dt = now - fps_last_displayed;
 			if (fps_dt >= 0.5) { // Update FPS variable every 0.5s for ImGui
 				FPS = fps_counter_frames / fps_dt;
-                
+
                 // Still log to terminal only every 10 seconds
                 static double last_terminal_log = 0.0;
                 if (now - last_terminal_log >= 10.0) {
@@ -1406,12 +1406,12 @@ if (action == GLFW_PRESS) {
 			else {
 				// we are already inside our game: shoot!
 				auto this_inst = static_cast<App*>(glfwGetWindowUserPointer(window));
-				
+
 				// Block shooting during cinematic (cv09)
 				if (this_inst->cam_state != AppCameraState::GAMEPLAY) return;
 
 				this_inst->shoot_anim_time = 0.3f; // 0.3 seconds animation
-				
+
 				// Spawn Bullet
 				Bullet b;
 				// Bullet starts from head/shoulder level (5.0f) to match new crosshair
@@ -1505,7 +1505,7 @@ void App::glfw_scroll_callback(GLFWwindow* window, double xoffset, double yoffse
     // REQ: event processing: mouse wheel (FOV control)
 		auto this_inst = static_cast<App*>(glfwGetWindowUserPointer(window));
     this_inst->fov += 10*yoffset; // yoffset is mostly +1 or -1; one degree difference in fov is not visible
-    this_inst->fov = std::clamp(this_inst->fov, 20.0f, 170.0f); // limit FOV to reasonable values...
+    this_inst->fov = std::clamp(this_inst->fov, 20.0f, 130.0f); // limit FOV to reasonable values...
 
     this_inst->update_projection_matrix();
 }
@@ -1611,9 +1611,9 @@ float App::get_ground_height(glm::vec3 pos, float ray_depth) {
 
 void App::spawn_bandit_wave(int count) {
     if (!bandit_base_model) return;
-    
+
     wave_info_timer = 4.0f; // Show "New Wave" for 4 seconds
-    
+
     // --- DIFFICULTY SCALING ---
     // Scalable attributes (REQ: challenging up to wave 500)
     int current_health = 3 + (wave_number / 15);
@@ -1621,7 +1621,7 @@ void App::spawn_bandit_wave(int count) {
     bandit_throw_cooldown = std::max(1.0f, 4.0f - (float)wave_number / 100.0f);
     bandit_damage_rate = 30.0f + (float)wave_number * 0.5f;
 
-    std::cout << "[Wave " << wave_number << "] Enemies: " << count 
+    std::cout << "[Wave " << wave_number << "] Enemies: " << count
               << ", Health: " << current_health << ", Speed: " << bandit_speed << "\n";
 
     // Clear old state for fresh wave
@@ -1640,7 +1640,7 @@ void App::spawn_bandit_wave(int count) {
     // Spawn!
     for (int i = 0 ; i < count ; i++) {
         auto bandit = std::make_shared<Model>(*bandit_base_model);
-        
+
         // REQ: bandits must spawn at least 50m from player
         glm::vec3 spawn_pos;
         float dist;
@@ -1657,14 +1657,14 @@ void App::spawn_bandit_wave(int count) {
 
         bandit->pivot_position = spawn_pos;
         bandits.push_back(bandit);
-        bandit_health.push_back(current_health); 
+        bandit_health.push_back(current_health);
         bandit_throw_timers.push_back(2.0f + (float)(rand() % 30) * 0.1f);
         bandit_shoot_timers.push_back(1.0f + (float)(rand() % 20) * 0.1f);
         bandit_velocities_y.push_back(0.0f);
         bandit_safe_positions.push_back(spawn_pos);
         bandit_last_positions.push_back(spawn_pos);
         bandit_stuck_timers.push_back(0.0f);
-        
+
         // Initial AI state
         bandit_states.push_back(AIState::CHASE);
         bandit_target_positions.push_back(playerPos);
@@ -1689,12 +1689,12 @@ void App::spawn_single_whiskey() {
         glm::vec3 test_pos(dist_pos(generator), -218.0f, dist_pos(generator));
         float g = physics.get_ground_height(test_pos);
         float c = physics.get_ceiling_height(test_pos);
-        
+
         // INDOOR CHECK: Has a ceiling and the room is reasonably low
         if (g > -500.0f && c > g && (c - g) < 20.0f) {
             WhiskeyPickup wp;
             glm::vec3 candidate_pos = glm::vec3(test_pos.x, g + 2.5f, test_pos.z);
-            
+
             // PUSH OUT OF WALLS: resolve collision with 1.5f radius
             wp.position = physics.resolve_sphere_collision(candidate_pos, 1.5f);
             wp.active = true;
@@ -1759,13 +1759,13 @@ void App::init_fbo() {
     if (is_multisample_on) {
         int samples = 4; // Standard 4x MSAA
         glCreateFramebuffers(1, &msaa_fbo);
-        
+
         // FAKT PODROBNÁ OPTIMALIZACE: Místo Renderbufferu použijeme Multisampled Texturu
         // To nám umožní číst ji přímo v post-processu bez drahého glBlit volání.
         glCreateTextures(GL_TEXTURE_2D_MULTISAMPLE, 1, &msaa_color_rbo); // Reusing RBO name but it's a texture now
         glTextureStorage2DMultisample(msaa_color_rbo, samples, GL_RGB8, width, height, GL_TRUE);
         glNamedFramebufferTexture(msaa_fbo, GL_COLOR_ATTACHMENT0, msaa_color_rbo, 0);
-        
+
         glCreateRenderbuffers(1, &msaa_depth_rbo);
         glNamedRenderbufferStorageMultisample(msaa_depth_rbo, samples, GL_DEPTH24_STENCIL8, width, height);
         glNamedFramebufferRenderbuffer(msaa_fbo, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, msaa_depth_rbo);
@@ -1783,7 +1783,7 @@ void App::init_fbo() {
 
 void App::init_skybox() {
     float skyboxVertices[] = {
-        // positions          
+        // positions
         -1.0f,  1.0f, -1.0f,
         -1.0f, -1.0f, -1.0f,
          1.0f, -1.0f, -1.0f,
@@ -1830,7 +1830,7 @@ void App::init_skybox() {
     glCreateVertexArrays(1, &skybox_vao);
     glCreateBuffers(1, &skybox_vbo);
     glNamedBufferData(skybox_vbo, sizeof(skyboxVertices), skyboxVertices, GL_STATIC_DRAW);
-    
+
     glEnableVertexArrayAttrib(skybox_vao, 0);
     glVertexArrayAttribFormat(skybox_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
     glVertexArrayAttribBinding(skybox_vao, 0, 0);
@@ -1843,29 +1843,46 @@ void App::init_skybox() {
     };
     skybox_texture = load_cubemap(faces);
 }
-
 GLuint App::load_cubemap(std::vector<std::string> faces) {
     GLuint textureID;
-    glGenTextures(1, &textureID);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+    glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &textureID);  // DSA
+
+    // Load first image to get dimensions
+    int width = 0, height = 0;
+    if (!faces.empty()) {
+        cv::Mat tmp = cv::imread(faces[0]);
+        if (!tmp.empty()) {
+            width = tmp.cols;
+            height = tmp.rows;
+        }
+    }
+
+    // Allocate storage for all 6 cubemap faces
+    glTextureStorage3D(textureID, 1, GL_RGB8, width, height, 6);
 
     for (unsigned int i = 0; i < faces.size(); i++) {
         cv::Mat img = cv::imread(faces[i]);
         if (!img.empty()) {
             cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
-            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, img.cols, img.rows, 0, GL_RGB, GL_UNSIGNED_BYTE, img.data);
+            glTextureSubImage3D(textureID,
+                                0,  // mip level
+                                0, 0, i,  // x, y, layer (cubemap face)
+                                img.cols, img.rows, 1,  // width, height, depth
+                                GL_RGB, GL_UNSIGNED_BYTE,
+                                img.data);
         } else {
             std::cerr << "Cubemap face failed to load at path: " << faces[i] << std::endl;
         }
     }
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
     return textureID;
 }
+
 
 void App::init_billboards() {
     float billboardVertices[] = {
@@ -1972,7 +1989,7 @@ void App::render_skybox() {
     skybox_shader->setUniform("projection", projection_matrix);
     glBindTextureUnit(0, skybox_texture);
     skybox_shader->setUniform("skybox", 0);
-    
+
     glBindVertexArray(skybox_vao);
     glDrawArrays(GL_TRIANGLES, 0, 36);
     glDepthFunc(GL_LESS); // Reset to default
@@ -1982,7 +1999,7 @@ void App::render_skybox() {
 
 void App::render_billboards() {
     if (!billboard_shader || !billboard_tex || billboards.empty()) return;
-    
+
     // 1. Prepare instance data
     std::vector<BillboardInstance> instances;
     instances.reserve(billboards.size());
@@ -1992,7 +2009,7 @@ void App::render_billboards() {
         inst.tint_scaleY = glm::vec4(b.tint * 0.6f, b.scale.y); // DARKER BUSHES (requested)
         instances.push_back(inst);
     }
-    
+
     // 2. Upload to SSBO
     glNamedBufferSubData(billboard_ssbo, 0, instances.size() * sizeof(BillboardInstance), instances.data());
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, billboard_ssbo);
@@ -2012,7 +2029,7 @@ void App::render_billboards() {
 void App::render_post_process() {
     if (!post_process_shader) return;
     post_process_shader->use();
-    
+
     // Manuální Resolve: Sampler2D vs Sampler2DMS
     if (is_multisample_on && msaa_fbo != 0) {
         glBindTextureUnit(1, msaa_color_rbo); // Bind MS texture to unit 1
@@ -2032,7 +2049,7 @@ void App::render_post_process() {
     glDisable(GL_CULL_FACE); // Ensure triangle is not culled
     glBindVertexArray(post_process_vao); // Use dedicated/clean VAO
     glDrawArrays(GL_TRIANGLES, 0, 3);
-    
+
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
 }
