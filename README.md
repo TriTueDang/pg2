@@ -57,6 +57,8 @@
 *Vytvořeno jako semestrální projekt pro PG2.*
 # Splnění požadavků zkoušky (PG2)
 
+# Splnění požadavků zkoušky (PG2)
+
 Tento dokument mapuje požadavky zadání na konkrétní místa v kódu aplikace **Chicken Gun Story**.
 
 ## 1. ESSENTIALS (Základní požadavky)
@@ -114,6 +116,17 @@ Tento dokument mapuje požadavky zadání na konkrétní místa v kódu aplikace
 
 ### [x] Correct collisions
 - **Implementace:** `Physics.cpp` / `Physics.hpp`. Používá robustní **KCC** (Kinematic Character Controller) s detekcí kolizí proti BVH stromu scény.
+- **Velmi podrobný technický rozbor:**
+    - **BVH (Bounding Volume Hierarchy) - Akcelerace:**
+        - **Stavba:** Top-down rekurzivní dělení scény. Pro každý uzel se počítá AABB (Axis-Aligned Bounding Box). Dělení probíhá v ose s největším rozptylem (longest axis) podle průměrné pozice středů (centroids) trojúhelníků, což zajišťuje lepší vyváženost stromu než prosté dělení středu krabice.
+        - **Traverzace:** Implementována **Slab Method** pro bleskový test průniku paprsku s AABB. Tato metoda počítá intervaly $[t_{min}, t_{max}]$ pro každou osu a jejich průnikem okamžitě vyřazuje celé větve stromu (v mapě s tisíci trojúhelníky se reálně testují jen desítky).
+    - **KCC (Kinematic Character Controller) - Pohyb:**
+        - **Predikce a Sliding:** Algoritmus nejdříve navrhne novou pozici hráče. Pokud dojde k průniku se zdí, vypočítá se nejbližší bod na trojúhelníku a pomocí normály se hráč "vystrčí" ven. Tento proces probíhá iterativně (4 průchody), což umožňuje plynulé klouzání v rozích (sliding) bez zasekávání.
+        - **Anti-Tunneling (Sub-stepping):** Pohyb je v `app.cpp` rozdělen na menší kroky (`MAX_STEP = 0.01s`). To zaručuje, že ani při nízkém FPS hráč neproletí skrze tenké stěny (fyzika běží na 100 Hz nezávisle na renderu).
+        - **Step-Up (Schody):** Pokud je horizontální pohyb zablokován, KCC provede virtuální "nadzvednutí" postavy a pokusí se o pohyb znovu. Pokud je nad překážkou volno a pod ní je detekována země, postava na překážku vystoupí (plynulá chůze do schodů).
+    - **Raycasting & Matematika:**
+        - **Möller–Trumbore Algoritmus:** Použit pro detekci zásahů a hledání země. Je zvolen pro svou efektivitu, protože počítá průnik přímo pomocí barycentrických souřadnic $(u, v)$ bez nutnosti explicitně definovat rovinu trojúhelníka.
+        - **Snap-to-floor:** Aby postava nelevitovala při chůzi z kopce, provádí se multi-sampling země (střed + 4 body kolem nohou). Pokud je detekován povrch v blízkosti, pozice $Y$ se plynule "přicucne" k zemi.
 
 ---
 
