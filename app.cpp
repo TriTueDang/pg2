@@ -330,7 +330,7 @@ void App::init_assets(void) {
     
     // Load textures
     auto rango_tex = std::make_shared<Texture>("assets/rango/source/tex_65.png", Texture::Interpolation::linear_mipmap_linear, true); // Re-enabled flip
-    auto revolver_tex = std::make_shared<Texture>("assets/38-special-revolver/textures/rev_d.tga.png");
+
     auto bullet_tex = std::make_shared<Texture>("assets/9mm-bullet/textures/Bullet Normal.png");
     auto city_tex = std::make_shared<Texture>("assets/chicken-gun-western-reupload/textures/PolygonWestern_Texture_01_A.png");
     auto bandit_tex = std::make_shared<Texture>("assets/bobrito-bandito-game-ready-3d-model-free/textures/Costume_Base_color.png");
@@ -352,10 +352,7 @@ void App::init_assets(void) {
         player_model->scale = glm::vec3(4.0f); // Restored original scale
     } catch (...) { std::cerr << "Failed to load Rango\n"; }
 
-    try {
-        weapon_model = std::make_shared<Model>("assets/38-special-revolver/source/rev_anim.obj.obj", shader_prog, revolver_tex);
-        weapon_model->scale = glm::vec3(0.05f); // Radical scale increase for guaranteed visibility
-    } catch (...) { std::cerr << "Failed to load revolver\n"; }
+
 
     // Build BVH physics for the city immediately after loading city model
     build_physics();
@@ -1012,22 +1009,7 @@ int App::run(void)
 				}
 			}
 
-			// Update weapon position
-			if (weapon_model && player_model) {
-				// Position weapon relative to player with offset
-				glm::vec3 w_off = glm::vec3(4.0f, 5.0f, 2.0f); // Fast fix visibility
-				weapon_model->pivot_position = playerPos + camera.Right * w_off.x + camera.Up * w_off.y + camera.Front * w_off.z;
-				
-				// Standard rotation based on camera
-				weapon_model->eulerAngles.y = camera.Yaw + weapon_rotation.y;
-				weapon_model->eulerAngles.x = -camera.Pitch + weapon_rotation.x;
-				weapon_model->eulerAngles.z = weapon_rotation.z; 
 
-				if (shoot_anim_time > 0.0f) {
-					weapon_model->eulerAngles.x += sin(shoot_anim_time * 15.0f) * 10.0f;
-					shoot_anim_time -= delta_t;
-				}
-			}
 
 			// Camera positioning is now fully handled by camera.HandleCollision(physics)
 			// which is called earlier in the loop (line 603).
@@ -1205,7 +1187,7 @@ int App::run(void)
 				}
 			}
 
-            // --- Unnecessary Waypoints and Path rendering fully removed to save draw calls ---
+
             shader_prog->use();
 
             // cv08: Draw Skybox LAST (optimized to draw only at depth 1.0)
@@ -1706,30 +1688,6 @@ void App::spawn_single_whiskey() {
 }
 
 
-void App::init_path_visualization() {
-    glCreateVertexArrays(1, &path_vao);
-    glCreateBuffers(1, &path_vbo);
-
-    update_path_visualization();
-
-    glEnableVertexArrayAttrib(path_vao, 0);
-    glVertexArrayAttribFormat(path_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
-    glVertexArrayAttribBinding(path_vao, 0, 0);
-    glVertexArrayVertexBuffer(path_vao, 0, path_vbo, 0, sizeof(glm::vec3));
-}
-
-void App::update_path_visualization() {
-    std::vector<glm::vec3> visualization_points;
-    float maxT = intro_spline.getMaxT();
-    int segments = 200; // Resolution of the line
-    for (int i = 0; i <= segments; ++i) {
-        float t = (float)i / (float)segments * maxT;
-        visualization_points.push_back(intro_spline.evaluate(t));
-    }
-    path_vertex_count = (int)visualization_points.size();
-
-    glNamedBufferData(path_vbo, visualization_points.size() * sizeof(glm::vec3), visualization_points.data(), GL_STATIC_DRAW);
-}
 
 void App::init_fbo() {
     // Cleanup old resources
