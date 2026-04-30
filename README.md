@@ -55,3 +55,87 @@
 
 ---
 *Vytvořeno jako semestrální projekt pro PG2.*
+# Splnění požadavků zkoušky (PG2)
+
+Tento dokument mapuje požadavky zadání na konkrétní místa v kódu aplikace **Chicken Gun Story**.
+
+## 1. ESSENTIALS (Základní požadavky)
+
+### [x] 3D GL Core profile + shaders version 4.6
+- **Kontext:** `app.cpp` (řádky 228–230) – Inicializace pomocí GLFW: `GLFW_OPENGL_CORE_PROFILE` a verze 4.6.
+- **Shadery:** `shader.frag` (řádek 1) a další shadery používají `#version 460 core`.
+
+### [x] GL debug enabled
+- **Aktivace:** `app.cpp` (řádek 231) – Nastavení `GLFW_OPENGL_DEBUG_CONTEXT`.
+- **Callback:** `app.cpp` (řádky 286–293) – Registrace `glDebugMessageCallback` ve funkci `init_gl_debug`.
+- **Implementace:** `app.cpp` (řádky 48–75) – Funkce `gl_debug_callback` vypisuje chyby do konzole.
+
+### [x] JSON config file
+- **Soubor:** `config.json` v kořenovém adresáři.
+- **Načítání:** `app.cpp` (řádky 170–189) – Implementace funkce `load_config` využívající knihovnu `nlohmann/json`.
+
+### [x] High performance (min. 60 FPS)
+- **Sledování:** FPS se zobrazuje v ImGui okně "Info" (`app.cpp`, řádek 535).
+- **Optimalizace:** 
+    - Použití **BVH** (Bounding Volume Hierarchy) pro fyziku (`Physics.cpp`).
+    - **Instancování** banditů pro snížení počtu draw calls (`app.cpp`, řádky 1130–1152).
+    - **Pre-kalkulace** názvů uniformů pro zamezení alokací v každém snímku (`app.cpp`, řádky 150–157).
+
+### [x] VSync, Antialiasing, Fullscreen
+- **VSync:** Ovládání klávesou **'V'** (`app.cpp`, řádek 1305).
+- **Antialiasing (MSAA):** Aktivace `GL_MULTISAMPLE` (`app.cpp`, řádek 118), přepínání klávesou **'M'** (`app.cpp`, řádek 1333).
+- **Fullscreen:** Přepínání klávesou **'F'** (`app.cpp`, řádek 1309).
+
+### [x] Event processing (Mouse, Keyboard)
+- **Klávesnice:** `app.cpp` (řádky 1278–1365) – `glfw_key_callback`.
+- **Myš (pohyb):** `app.cpp` (řádky 260, 508) – `cursorPositionCallback`.
+- **Myš (kolečko):** `app.cpp` (řádek 261) – `glfw_scroll_callback`.
+
+### [x] Nezávisle se pohybující 3D modely
+- **Načítání:** Využívá `Model.hpp` a `OBJloader.cpp`.
+- **Modely:** Město (`western.obj`), Hráč (`Rango.obj`), Banditi (`Offensive Idle.obj`), Dynamit, Whiskey.
+- **Pohyb:** Nezávislá AI logika pro bandity (`app.cpp`, řádky 744–800).
+
+### [x] Custom shader effect
+- **Post-processing:** `post_process.frag` – implementuje vinětaci, ACES tone mapping a efekt "zranění" (červené pulzování).
+
+### [x] Minimálně 3 různé textury
+- **Implementace:** `app.cpp` (řádky 332–338). Použito více než 6 unikátních textur (pro město, hráče, bandity, dynamit, atd.).
+
+### [x] Lighting model (všechny typy)
+- **Ambient:** Globální složka v `shader.frag` (řádek 100).
+- **Directional:** Slunce v `app.cpp` (řádky 418–421), rotuje v `run` smyčce (řádek 1029).
+- **Point:** Dvě světla v `app.cpp` (řádky 424–436), jedno obíhá scénu (řádek 1034).
+- **Reflector (Spotlight):** "Čelovka" připojená ke kameře (`app.cpp`, řádky 439–447 a 1039–1040).
+
+### [x] Alpha scale transparency
+- **Nastavení:** `app.cpp` (řádky 121–122) – Zapnutý `GL_BLEND` a `glBlendFunc`.
+- **Využití:** Průhledné billboardy (tumbleweeds) a částicový systém.
+
+### [x] Correct collisions
+- **Implementace:** `Physics.cpp` / `Physics.hpp`. Používá robustní **KCC** (Kinematic Character Controller) s detekcí kolizí proti BVH stromu scény.
+
+---
+
+## 2. EXTRAS (Bonusy)
+
+### [x] Particle effects
+- **Implementace:** `app.cpp` (řádky 663–673 – update, `render_particles` – vykreslení) a shader `particle.frag`.
+
+### [x] Height map (Ground snapping)
+- **Funkce:** `physics.get_ground_height` v `Physics.cpp`.
+- **Využití:** Automatické přichytávání hráče a banditů k nerovnostem terénu (`app.cpp`, řádky 515 a 748).
+
+### [x] Scripting / AI
+- **AI Logic:** `app.cpp` (řádky 754–800) – Stavový automat banditů (Chase -> Seek Cover -> Shoot).
+
+### [x] Další efekty
+- **Cinematic Camera:** Filmový průlet městem na začátku hry pomocí Catmull-Rom spline (`app.cpp`, řádky 453–464).
+- **MSA Resolve:** Manuální resolve multisamplingu v post-process shaderu pro vyšší kvalitu.
+
+---
+
+## 3. INSTAFAIL CHECK
+- **GLUT:** Nepoužito (nahrazeno moderním GLFW).
+- **Core profile:** Striktně dodržen.
+- **DSA (Direct State Access):** Použito (např. `glCreateBuffers`, `glNamedBufferData`, `glCreateVertexArrays`).
