@@ -97,7 +97,6 @@ private:
     std::shared_ptr<ShaderProgram> shader_prog;
     std::shared_ptr<Model> city_model;
     std::shared_ptr<Model> player_model;
-    std::shared_ptr<Model> weapon_model;
     std::vector<std::shared_ptr<Model>> bandits;
     
     // cv07 & cv08 Shaders
@@ -154,8 +153,6 @@ private:
     bool show_post_process = true;
     float shoot_anim_time = 0.0f;
     glm::vec3 playerPos = glm::vec3(-121.64f, -218.70f, 63.23f);
-    glm::vec3 weapon_offset{ 1.15f, 3.6f, 2.4f };
-    glm::vec3 weapon_rotation{ 0.0f, 180.0f, 90.0f }; // Added 90 degrees to Z to stand it upright
 
     // Gameplay
     float player_health = 100.0f;
@@ -264,10 +261,6 @@ private:
     Frustum extract_frustum(const glm::mat4& viewProj);
     bool is_inside_frustum(const Frustum& f, glm::vec3 pos, float radius);
 
-    // Spline / Path (cv09)
-    void init_path_visualization();
-    void update_path_visualization();
-
     // Cinematic Camera (cv09)
     enum class AppCameraState { GAMEPLAY, CINEMATIC, TRANSITION };
     AppCameraState cam_state = AppCameraState::CINEMATIC;
@@ -292,10 +285,6 @@ private:
     std::vector<std::string> point_light_amb_names;
     std::vector<std::string> point_light_diff_names;
     std::vector<std::string> point_light_spec_names;
-
-    // Spline visual (keep VBO/VAO if needed for debug, otherwise remove)
-    GLuint path_vao = 0, path_vbo = 0;
-    int path_vertex_count = 0;
 
     // cv07 & cv08 helpers
     void init_fbo();

@@ -26,7 +26,6 @@ elseif(UNIX)
 endif()
 
 set(PROJECT_SOURCES
-    # helloworld.cpp
     main.cpp
     assets.hpp
     app.cpp
